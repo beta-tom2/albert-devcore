@@ -40,7 +40,21 @@ No roadmap item may require a paid third-party AI API. Ollama remains read-only,
 
 - [x] single-task queue leases with stale-lease recovery and bounded retries;
 - [x] central route enforcement for deterministic, Ollama, and Codex work;
-- [x] automatic bounded read-only Ollama first pass for local-safe tasks;
+- [x] bounded read-only Ollama first pass only after an explicit manual route;
 - [x] generated Codex handoff with exact completion and release commands;
 - [x] Draft-PR-only background-agent contract with protected-domain stops;
-- [x] activate and observe ChatGPT Scheduled Tasks for NAVIRA and ATLAS after v0.4 merges.
+- [ ] revalidate configured project schedules against the accepted runtime revision after promotion.
+
+## Reliability follow-up
+
+- [x] read-only status for actual runtime, installed core file hashes, lineage and existing Windows schedules;
+- [x] explicit checkpoint freshness states without promoting old verification evidence;
+- [x] MANUAL_ONLY enforcement in the dispatcher route, including negative prefix cases;
+- [x] shared skill contract and task-local behavioral scenario definitions;
+- [x] record five fresh-agent observations across four task patterns, including saved cloud-router recovery, with original fixtures and independent file-scope checks;
+- [ ] verify implicit global skill discovery in a fresh laptop Codex session and complete remaining scenario coverage;
+- [ ] promote the reviewed candidate and verify the canonical scheduled runtime.
+
+Checked code capabilities do not imply that a schedule, publisher, external
+provider or cloud worker is installed or currently active. Deployment state is
+established from actual configuration and recent results.

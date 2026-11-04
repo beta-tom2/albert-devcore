@@ -1,16 +1,38 @@
 {
-  "version": 4,
+  "version": 5,
   "policy": {
     "defaultMode": "selective",
     "thirdPartyDefault": "deny-until-audited",
     "maxOptionalSkillsPerTask": 4,
     "projectRulesWin": true,
-    "explicitUserInstructionWins": true
+    "explicitUserInstructionWins": true,
+    "installableStatuses": [
+      "approved",
+      "approved-under-wrapper"
+    ],
+    "defaultInstallation": "verified-local-artifacts-only"
   },
+  "prioritySkills": [
+    "verification-before-completion",
+    "systematic-debugging",
+    "expo-native-ui",
+    "expo-data-fetching",
+    "vercel-react-native-skills",
+    "supabase",
+    "supabase-postgres-best-practices",
+    "domain-modeling",
+    "codebase-design",
+    "frontend-design",
+    "impeccable",
+    "tdd",
+    "writing-plans",
+    "playwright-cli",
+    "differential-review"
+  ],
   "skills": [
-    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"medium-or-higher development work or specialized routing"},
-    {"name":"albert-architecture-review","source":"beta-tom2/albert-devcore","status":"approved","scope":["architecture"],"trigger":"broad architecture friction review; not tiny refactors"},
-    {"name":"albert-design-director","source":"beta-tom2/albert-devcore","status":"approved","scope":["ui","ux","frontend","motion","web","mobile"],"trigger":"meaningful application or website UI/design/motion work"},
+    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"project status, task recovery, agent handoff, new-project adoption, or medium-or-higher development/specialized routing; skip obvious tiny fixes"},
+    {"name":"albert-architecture-review","source":"beta-tom2/albert-devcore","status":"approved","scope":["architecture"],"trigger":"broad architecture friction review, read-only unless implementation is authorized; skip tiny refactors"},
+    {"name":"albert-design-director","source":"beta-tom2/albert-devcore","status":"approved","scope":["ui","ux","frontend","motion","web","mobile"],"trigger":"meaningful application or website UI/design/motion creation or read-only review; skip tiny copy/spacing and backend-only work"},
     {"name":"find-skills","source":"vercel-labs/skills","status":"approved","scope":["meta"],"trigger":"skill discovery only"},
 
     {"name":"frontend-design","source":"anthropics/skills","status":"approved-under-wrapper","scope":["ui","ux","frontend"],"trigger":"new or substantial user-facing design direction via albert-design-director"},
@@ -36,6 +58,10 @@
     {"name":"domain-modeling","source":"mattpocock/skills","status":"approved-under-wrapper","scope":["architecture","domain"],"trigger":"only when domain terminology or boundaries genuinely need work"},
     {"name":"grilling","source":"mattpocock/skills","status":"conditional","scope":["decision"],"trigger":"explicit interactive stress-test only","reason":"upstream skill intentionally blocks for repeated user answers; Albert default is nonblocking analysis"},
     {"name":"improve-codebase-architecture","source":"mattpocock/skills","status":"approved-under-wrapper","scope":["architecture"],"trigger":"albert-architecture-review dependency"},
-    {"name":"ai-video-generation","source":"skills-101/superpowers","status":"rejected-for-now","scope":["media"],"trigger":"none","reason":"young fork, external API dependency, not core to current dev workflow"}
+    {"name":"ai-video-generation","source":"skills-101/superpowers","status":"rejected-for-now","scope":["media"],"trigger":"none","reason":"young fork, external API dependency, not core to current dev workflow"},
+
+    {"name":"writing-plans","source":"obra/superpowers","status":"reference-only","scope":["planning"],"trigger":"reuse precise interfaces, dependencies and acceptance criteria in existing ADOS task contracts","reason":"Do not install a second planning workflow; upstream requires blocking handoffs and additional Superpowers skills."},
+    {"name":"playwright-cli","source":"microsoft/playwright","status":"candidate-needs-audit","scope":["web","testing"],"trigger":"web workflow verification only when existing project browser tooling is insufficient","reason":"A runtime and referenced guides must be audited together; NAVIRA already has project-native Playwright tooling."},
+    {"name":"differential-review","source":"trailofbits/skills","status":"candidate-needs-audit","scope":["security","review"],"trigger":"risk-based review of auth, permissions or other sensitive diffs after artifact audit","reason":"Keep package references and CC-BY-SA-4.0 attribution; do not imply installation from a recommendation."}
   ]
 }

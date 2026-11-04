@@ -169,6 +169,9 @@ function Get-AdosEvidenceFiles {
 function Invoke-AdosScopeGuard {
     param([string]$Root, [string]$TaskText, [string[]]$Allowed)
 
+    $head = Get-AdosHead $Root
+    $branch = Get-AdosBranch $Root
+    $inputFingerprint = Get-AdosEvidenceFingerprint $Root
     $files = @(Get-AdosEvidenceFiles $Root)
     $checkpoint = Read-AdosJson (Join-Path $Root '.ai\checkpoints\current.json') $null
     $baseline = @()
@@ -190,9 +193,17 @@ function Invoke-AdosScopeGuard {
     $status = 'PASS'
     if ($outside.Count -gt 0 -or $protected.Count -gt 0) { $status = 'REVIEW_REQUIRED' }
     if ($patterns.Count -eq 0 -and $newFiles.Count -gt 0) { $status = 'REVIEW_REQUIRED' }
+    $endFingerprint = Get-AdosEvidenceFingerprint $Root
+    $repositoryUnchanged = [bool]($inputFingerprint -ceq $endFingerprint)
+    if (-not $repositoryUnchanged) { $status = 'REVIEW_REQUIRED' }
     $payload = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         generated = (Get-Date -Format o)
+        head = $head
+        branch = $branch
+        evidenceFingerprint = $inputFingerprint
+        endEvidenceFingerprint = $endFingerprint
+        repositoryUnchanged = $repositoryUnchanged
         task = $TaskText
         status = $status
         allowedPatterns = @($patterns)
@@ -203,7 +214,7 @@ function Invoke-AdosScopeGuard {
     }
     $jsonPath = Join-Path $Root '.ai\evidence\scope-guard.generated.json'
     Write-AdosJson $jsonPath $payload 8
-    $lines = @('# ADOS scope guard','',"Status: $status",'', '## Allowed patterns')
+    $lines = @('# ADOS scope guard','',"Status: $status", "Repository unchanged during scope evaluation: $repositoryUnchanged",'', '## Allowed patterns')
     $lines += ConvertTo-AdosMarkdownList $patterns
     $lines += @('','## Outside scope')
     $lines += ConvertTo-AdosMarkdownList $outside
@@ -286,6 +297,9 @@ function Invoke-AdosVerification {
     param([string]$Root, [int]$Limit)
 
     $timer = [Diagnostics.Stopwatch]::StartNew()
+    $head = Get-AdosHead $Root
+    $branch = Get-AdosBranch $Root
+    $inputFingerprint = Get-AdosEvidenceFingerprint $Root
     $results = @()
     $focusedSelection = Get-AdosFocusedTestSelection $Root
     $focusedExecuted = $false
@@ -410,12 +424,20 @@ function Invoke-AdosVerification {
         }
     }
 
+    $endFingerprint = Get-AdosEvidenceFingerprint $Root
+    $repositoryUnchanged = [bool]($inputFingerprint -ceq $endFingerprint)
+    $results += New-AdosCheckResult 1 'repository unchanged during verification' $(if ($repositoryUnchanged) {'PASS'} else {'FAIL'}) $(if ($repositoryUnchanged) {0} else {1}) $(if ($repositoryUnchanged) {'input fingerprint preserved'} else {'repository changed while checks were running; review the changes and rerun verification'})
     $timer.Stop()
     $failures = @($results | Where-Object { $_.status -eq 'FAIL' })
     $status = if ($failures.Count -eq 0) { 'PASS' } else { 'FAIL' }
     $payload = [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 3
         generated = (Get-Date -Format o)
+        head = $head
+        branch = $branch
+        evidenceFingerprint = $inputFingerprint
+        endEvidenceFingerprint = $endFingerprint
+        repositoryUnchanged = $repositoryUnchanged
         status = $status
         maxLevel = $Limit
         durationMs = $timer.ElapsedMilliseconds
@@ -471,29 +493,39 @@ function Test-AdosSecretDiff {
 function Invoke-AdosEvidenceGate {
     param([string]$Root, [bool]$MustHaveDiff)
 
+    $head = Get-AdosHead $Root
+    $branch = Get-AdosBranch $Root
+    $fingerprint = Get-AdosEvidenceFingerprint $Root
     $files = @(Get-AdosEvidenceFiles $Root)
     $verification = Read-AdosJson (Join-Path $Root '.ai\evidence\verification.generated.json') $null
     $scope = Read-AdosJson (Join-Path $Root '.ai\evidence\scope-guard.generated.json') $null
     $hasDiff = $files.Count -gt 0
     $verificationPassed = [bool]($verification -and [string]$verification.status -eq 'PASS')
     $scopePassed = [bool]($scope -and [string]$scope.status -eq 'PASS')
+    $verificationCurrent = Test-AdosVerificationState $verification $head $branch $fingerprint
+    $scopeCurrent = Test-AdosVerificationState $scope $head $branch $fingerprint
     $secretDetected = Test-AdosSecretDiff $Root
+    $repositoryUnchanged = [bool]($fingerprint -ceq (Get-AdosEvidenceFingerprint $Root))
     $requirements = @(
         [pscustomobject]@{ name='diff present'; passed=([bool]($hasDiff -or -not $MustHaveDiff)); detail="$($files.Count) files" },
         [pscustomobject]@{ name='verification observed'; passed=$verificationPassed; detail=$(if ($verification) {[string]$verification.status} else {'missing'}) },
+        [pscustomobject]@{ name='verification matches repository state'; passed=$verificationCurrent; detail=$(if ($verificationCurrent) {'current'} else {'missing or stale input fingerprint; rerun verification'}) },
         [pscustomobject]@{ name='scope guard passed'; passed=$scopePassed; detail=$(if ($scope) {[string]$scope.status} else {'missing'}) },
+        [pscustomobject]@{ name='scope matches repository state'; passed=$scopeCurrent; detail=$(if ($scopeCurrent) {'current'} else {'missing or stale input fingerprint; rerun scope guard'}) },
+        [pscustomobject]@{ name='repository unchanged during evidence gate'; passed=$repositoryUnchanged; detail=$(if ($repositoryUnchanged) {'stable'} else {'changed while evaluating the gate'}) },
         [pscustomobject]@{ name='no secret pattern in added diff'; passed=(-not $secretDetected); detail=$(if ($secretDetected) {'candidate detected'} else {'none'}) }
     )
     $failed = @($requirements | Where-Object { -not $_.passed })
     $status = if ($failed.Count -eq 0) { 'VERIFIED' } else { 'UNVERIFIED' }
     $payload = [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 3
         generated = (Get-Date -Format o)
         status = $status
         requireDiff = $MustHaveDiff
-        branch = Get-AdosBranch $Root
-        head = Get-AdosHead $Root
-        evidenceFingerprint = Get-AdosEvidenceFingerprint $Root
+        branch = $branch
+        head = $head
+        evidenceFingerprint = $fingerprint
+        inputsCurrent = [bool]($verificationCurrent -and $scopeCurrent -and $repositoryUnchanged)
         evidenceFiles = @($files)
         requirements = @($requirements)
     }
@@ -530,12 +562,14 @@ function Write-AdosPrEvidenceSummary {
     if ($gate -and @($gate.PSObject.Properties.Name) -contains 'evidenceFingerprint') {
         $gateFingerprint = [string]$gate.evidenceFingerprint
     }
-    $evidenceCurrent = [bool]($gateFingerprint -and $gateFingerprint -eq $currentFingerprint)
-    $gateVerified = [bool]($gate -and [string]$gate.status -eq 'VERIFIED')
+    $evidenceCurrent = Test-AdosEvidenceGateCurrent $gate $verification $scope $head $branch $currentFingerprint
+    $gateHasCurrentInputs = [bool]($gate -and @($gate.PSObject.Properties.Name) -contains 'inputsCurrent' -and
+        $gate.inputsCurrent -is [bool] -and $gate.inputsCurrent)
+    $gateVerified = [bool]($gate -and [string]$gate.status -eq 'VERIFIED' -and $gateHasCurrentInputs)
     $status = if ($gateVerified -and $evidenceCurrent) { 'READY' } else { 'NOT_READY' }
     $reason = if (-not $gate) { 'Evidence Gate has not run.' }
-        elseif (-not $gateVerified) { 'Evidence Gate is not VERIFIED.' }
-        elseif (-not $evidenceCurrent) { 'Repository state changed after Evidence Gate.' }
+        elseif (-not $gateVerified) { 'Evidence Gate is not VERIFIED with current input evidence.' }
+        elseif (-not $evidenceCurrent) { 'Repository state or verification inputs changed after Evidence Gate.' }
         else { 'Evidence Gate is VERIFIED and matches the current repository state.' }
 
     $files = @(Get-AdosEvidenceFiles $Root)

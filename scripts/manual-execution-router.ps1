@@ -16,7 +16,9 @@ function Test-RoutePrefix {
         [string[]]$Prefixes
     )
     foreach ($prefix in $Prefixes) {
-        if ($Text.StartsWith($prefix)) { return $true }
+        if (-not $Text.StartsWith($prefix)) { continue }
+        if ($Text.Length -eq $prefix.Length -or $prefix -match '[:\s]$') { return $true }
+        if ($Text.Substring($prefix.Length,1) -match '[:\s]') { return $true }
     }
     return $false
 }

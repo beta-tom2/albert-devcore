@@ -7,7 +7,7 @@ The dispatcher is the safe bridge between the local ADOS queue and a ChatGPT or 
 1. `ados.ps1 queue ... -QueueAction add` records a user-owned task locally.
 2. `ados.ps1 dispatch ... -DispatchAction run` leases the highest-priority eligible task.
 3. ADOS applies the central route policy and prepares deterministic context.
-4. Safe documentation-like tasks may receive a bounded Ollama read-only first pass.
+4. Tasks explicitly routed through Ollama may receive a bounded read-only first pass. Ordinary documentation tasks stay on the default Codex route under `MANUAL_ONLY`.
 5. The scheduled Codex agent reads `.ai/queue/dispatch.generated.json`, performs the task, verifies evidence, and creates only a Draft PR.
 6. The agent completes, blocks, or releases the exact lease. A lease timeout safely returns abandoned work to the queue on a later dispatcher run.
 

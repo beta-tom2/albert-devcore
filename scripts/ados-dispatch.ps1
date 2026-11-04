@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('run','status','complete','release')]
+    [ValidateSet('run','status','complete','release','renew')]
     [string]$Command,
 
     [Parameter(Mandatory = $true)]
@@ -50,10 +50,12 @@ function ConvertTo-AdosDispatchTask {
         route = [string](Get-AdosDispatchProperty $TaskValue 'route' '')
         leaseId = [string](Get-AdosDispatchProperty $TaskValue 'leaseId' '')
         leaseOwner = [string](Get-AdosDispatchProperty $TaskValue 'leaseOwner' '')
+        leaseStarted = [string](Get-AdosDispatchProperty $TaskValue 'leaseStarted' '')
         leaseUntil = [string](Get-AdosDispatchProperty $TaskValue 'leaseUntil' '')
         nextAttemptAfter = [string](Get-AdosDispatchProperty $TaskValue 'nextAttemptAfter' '')
         lastError = [string](Get-AdosDispatchProperty $TaskValue 'lastError' '')
         lastResult = [string](Get-AdosDispatchProperty $TaskValue 'lastResult' '')
+        completionEvidence = Get-AdosDispatchProperty $TaskValue 'completionEvidence' $null
     }
     foreach ($key in $Changes.Keys) { $payload[$key] = $Changes[$key] }
     return [pscustomobject]$payload
@@ -66,9 +68,7 @@ function Get-AdosDispatchQueuePath {
 
 function Read-AdosDispatchQueue {
     param([string]$Root)
-    $queue = Read-AdosJson (Get-AdosDispatchQueuePath $Root) $null
-    if (-not $queue) { return [pscustomobject]@{ schemaVersion=2; tasks=@() } }
-    return $queue
+    return Read-AdosQueueFile $Root
 }
 
 function Write-AdosDispatchQueue {
@@ -106,6 +106,7 @@ function Write-AdosDispatchReport {
             'At most one queue item is leased at a time.',
             'Ollama is optional, bounded, read-only, and never receives protected tasks.',
             'Codex remains responsible for code changes, evidence, and protected-domain review.',
+            'Lease checks protect queue transitions, not concurrent writes to product files.',
             'The dispatcher never merges, deploys, changes production, or approves its own result.'
         )
     }
@@ -120,7 +121,8 @@ function Write-AdosDispatchReport {
         '3. Use Codex for all edits, architecture, security, auth, SQL, RLS, finance, dependencies, releases, and production.',
         '4. Run Scope Guard, Verification Ladder, Evidence Gate, and create only a Draft PR.',
         '5. Never merge, deploy, expose secrets, or perform an externally visible action without explicit user authorization.',
-        '6. Complete or release the exact lease after the run; never silently abandon a claimed task.'
+        '6. Renew the exact lease before it expires. Stop editing if renewal fails; isolate concurrent workers.',
+        '7. Complete or release the exact lease after the run; completed requires fresh evidence for this task and claim.'
     )
     Write-AdosUtf8 (Join-Path $Root '.ai\queue\dispatch.generated.md') ($lines -join "`r`n")
     return [pscustomobject]$payload
@@ -134,22 +136,68 @@ function Update-AdosClaimedTask {
         $queue = Read-AdosDispatchQueue $Root
         $tasks = @()
         $updated = $null
+        $currentLeaseUntil = ''
         foreach ($item in @($queue.tasks)) {
             if ([string]$item.id -eq $Id) {
                 if ([string](Get-AdosDispatchProperty $item 'status' '') -ne 'claimed') { throw "Queue task is not claimed: $Id" }
                 if ([string](Get-AdosDispatchProperty $item 'leaseId' '') -ne $ExpectedLease) { throw "Lease mismatch for queue task: $Id" }
+                $currentLeaseUntil = [string]$item.leaseUntil
+                if (-not $ReturnToQueue -and (Test-AdosDispatchDateReached $currentLeaseUntil ([DateTimeOffset]::UtcNow))) {
+                    throw "Lease expired for queue task: $Id. Reclaim the task before recording an outcome."
+                }
+                $completionEvidence = $null
+                if (-not $ReturnToQueue -and $NewStatus -eq 'completed') {
+                    $leaseStarted = [string](Get-AdosDispatchProperty $item 'leaseStarted' '')
+                    if (-not $leaseStarted) { throw "Claim start is missing for queue task: $Id. Release and reclaim it before verification." }
+                    $completionEvidence = Get-AdosQueueCompletionEvidence $Root ([string]$item.task) $leaseStarted $ExpectedLease
+                }
                 $status = if ($ReturnToQueue) { 'pending' } else { $NewStatus }
                 $updated = ConvertTo-AdosDispatchTask $item @{
-                    updated=(Get-Date -Format o); status=$status; leaseId=''; leaseOwner=''; leaseUntil='';
-                    nextAttemptAfter=''; lastResult=$Message; lastError=$(if ($NewStatus -eq 'failed') { $Message } else { '' })
+                    updated=(Get-Date -Format o); status=$status; leaseId=''; leaseOwner=''; leaseStarted=''; leaseUntil='';
+                    nextAttemptAfter=''; lastResult=$Message; lastError=$(if ($NewStatus -eq 'failed') { $Message } else { '' });
+                    completionEvidence=$completionEvidence
                 }
                 $tasks += $updated
             }
             else { $tasks += (ConvertTo-AdosDispatchTask $item) }
         }
         if (-not $updated) { throw "Queue task not found: $Id" }
+        if (-not $ReturnToQueue -and (Test-AdosDispatchDateReached $currentLeaseUntil ([DateTimeOffset]::UtcNow))) {
+            throw "Lease expired for queue task: $Id during evidence validation. Reclaim and verify the task again."
+        }
         Write-AdosDispatchQueue $Root $tasks
         return $updated
+    }
+    finally { Exit-AdosQueueLock $lockPath }
+}
+
+function Renew-AdosDispatchLease {
+    param([string]$Root, [string]$Id, [string]$ExpectedLease, [int]$Minutes)
+
+    $lockPath = Enter-AdosQueueLock $Root
+    try {
+        $queue = Read-AdosDispatchQueue $Root
+        $tasks = @()
+        $renewed = $null
+        $previousExpiry = [DateTimeOffset]::MinValue
+        $now = [DateTimeOffset]::UtcNow
+        foreach ($item in @($queue.tasks)) {
+            if ([string]$item.id -eq $Id) {
+                if ([string]$item.status -ne 'claimed') { throw "Queue task is not claimed: $Id" }
+                if ([string]$item.leaseId -ne $ExpectedLease) { throw "Lease mismatch for queue task: $Id" }
+                if (Test-AdosDispatchDateReached ([string]$item.leaseUntil) $now) { throw "Lease expired for queue task: $Id. Reclaim it instead of renewing it." }
+                $previousExpiry = [DateTimeOffset]::Parse([string]$item.leaseUntil)
+                $nextExpiry = $now.AddMinutes($Minutes)
+                if ($nextExpiry -lt $previousExpiry) { $nextExpiry = $previousExpiry }
+                $renewed = ConvertTo-AdosDispatchTask $item @{ updated=$now.ToString('o'); leaseUntil=$nextExpiry.ToString('o') }
+                $tasks += $renewed
+            }
+            else { $tasks += (ConvertTo-AdosDispatchTask $item) }
+        }
+        if (-not $renewed) { throw "Queue task not found: $Id" }
+        if ($previousExpiry -le [DateTimeOffset]::UtcNow) { throw "Lease expired for queue task: $Id during renewal. Reclaim it instead." }
+        Write-AdosDispatchQueue $Root $tasks
+        return $renewed
     }
     finally { Exit-AdosQueueLock $lockPath }
 }
@@ -166,7 +214,7 @@ function Invoke-AdosDispatchRun {
             $status = [string](Get-AdosDispatchProperty $item 'status' 'pending')
             $leaseUntil = [string](Get-AdosDispatchProperty $item 'leaseUntil' '')
             if ($status -eq 'claimed' -and (Test-AdosDispatchDateReached $leaseUntil $now)) {
-                $tasks += (ConvertTo-AdosDispatchTask $item @{ status='pending'; leaseId=''; leaseOwner=''; leaseUntil=''; updated=(Get-Date -Format o); lastError='Previous dispatcher lease expired.' })
+                $tasks += (ConvertTo-AdosDispatchTask $item @{ status='pending'; leaseId=''; leaseOwner=''; leaseStarted=''; leaseUntil=''; updated=(Get-Date -Format o); lastError='Previous dispatcher lease expired.' })
             }
             else { $tasks += (ConvertTo-AdosDispatchTask $item) }
         }
@@ -202,7 +250,8 @@ function Invoke-AdosDispatchRun {
         $owner = "$env:COMPUTERNAME`:$PID"
         $leased = ConvertTo-AdosDispatchTask $selected @{
             updated=(Get-Date -Format o); status='claimed'; attempts=([int]$selected.attempts + 1); route=$route;
-            leaseId=$lease; leaseOwner=$owner; leaseUntil=$now.AddMinutes($LeaseMinutes).ToString('o'); lastError=''; lastResult=''
+            leaseId=$lease; leaseOwner=$owner; leaseStarted=$now.ToString('o'); leaseUntil=$now.AddMinutes($LeaseMinutes).ToString('o');
+            lastError=''; lastResult=''; completionEvidence=$null
         }
         $updatedTasks = @()
         foreach ($item in $tasks) {
@@ -260,6 +309,7 @@ function Invoke-AdosDispatchRun {
         elasticContext = '.ai\context\elastic-context.generated.md'
         evidenceGate = '.ai\evidence\evidence-gate.generated.md'
         completionCommand = ".\ados.ps1 dispatch -ProjectPath `"$Root`" -DispatchAction complete -QueueId `"$($leased.id)`" -DispatchLeaseId `"$($leased.leaseId)`" -DispatchResult completed"
+        renewalCommand = ".\ados.ps1 dispatch -ProjectPath `"$Root`" -DispatchAction renew -QueueId `"$($leased.id)`" -DispatchLeaseId `"$($leased.leaseId)`" -DispatchLeaseMinutes $LeaseMinutes"
     }
     $report = Write-AdosDispatchReport $Root 'READY_FOR_CODEX' $leased 'Task leased and prepared for the scheduled Codex agent.' $details
     Write-Host "Dispatcher: READY_FOR_CODEX ($($leased.id), $($leased.route))"
@@ -285,6 +335,12 @@ switch ($Command) {
         $updated = Update-AdosClaimedTask $root $QueueId $LeaseId $ResultStatus $ResultNote
         $null = Write-AdosDispatchReport $root $ResultStatus.ToUpperInvariant() $updated "Queue task marked $ResultStatus." @{ resultNote=$ResultNote }
         Write-Host "Dispatcher: $QueueId -> $ResultStatus"
+    }
+    'renew' {
+        if (-not $QueueId -or -not $LeaseId) { throw 'QueueId and LeaseId are required to renew a dispatch lease.' }
+        $updated = Renew-AdosDispatchLease $root $QueueId $LeaseId $LeaseMinutes
+        $null = Write-AdosDispatchReport $root 'RENEWED' $updated 'The current lease was renewed without changing its owner.'
+        Write-Host "Dispatcher: $QueueId lease renewed until $($updated.leaseUntil)"
     }
     'release' {
         if (-not $QueueId -or -not $LeaseId) { throw 'QueueId and LeaseId are required to release a dispatch lease.' }

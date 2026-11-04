@@ -41,6 +41,56 @@ function Read-AdosJson {
     catch { return $DefaultValue }
 }
 
+function Read-AdosQueueFile {
+    param([string]$Root)
+
+    $path = Join-Path $Root '.ai\queue\tasks.json'
+    if (-not (Test-Path -LiteralPath $path)) { return [pscustomobject]@{ schemaVersion=2; tasks=@() } }
+    try {
+        $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($text) -or -not $text.TrimStart().StartsWith('{')) {
+            throw 'Expected a JSON object.'
+        }
+        $queue = $text | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch { throw "Invalid ADOS queue: cannot read a JSON object at $path. The original file was not changed." }
+
+    $properties = @($queue.PSObject.Properties | ForEach-Object { $_.Name })
+    if ($properties -notcontains 'schemaVersion' -or @('1','2') -notcontains [string]$queue.schemaVersion -or
+        $properties -notcontains 'tasks' -or $queue.tasks -isnot [System.Array]) {
+        throw "Invalid ADOS queue: expected schemaVersion 1 or 2 and a tasks array at $path. The original file was not changed."
+    }
+    $ids = @{}
+    foreach ($item in $queue.tasks) {
+        if ($item -isnot [pscustomobject]) { throw 'Invalid ADOS queue: every task must be an object.' }
+        $fields = @($item.PSObject.Properties | ForEach-Object { $_.Name })
+        foreach ($required in @('id','task','status','priority','created','attempts','note')) {
+            if ($fields -notcontains $required) { throw "Invalid ADOS queue: task is missing $required." }
+        }
+        if ($item.id -isnot [string] -or [string]::IsNullOrWhiteSpace($item.id) -or
+            $item.task -isnot [string] -or [string]::IsNullOrWhiteSpace($item.task) -or
+            @('pending','claimed','completed','failed','blocked','cancelled') -notcontains [string]$item.status -or
+            @('low','normal','high','protected') -notcontains [string]$item.priority) {
+            throw 'Invalid ADOS queue: task ID, text, status, or priority is invalid.'
+        }
+        if ($ids.ContainsKey([string]$item.id)) { throw 'Invalid ADOS queue: duplicate task ID.' }
+        $ids[[string]$item.id] = $true
+        $attemptCount = 0
+        if (-not [int]::TryParse([string]$item.attempts, [ref]$attemptCount) -or $attemptCount -lt 0) {
+            throw 'Invalid ADOS queue: attempts must be a nonnegative integer.'
+        }
+        if ([string]$item.status -eq 'claimed') {
+            if ($fields -notcontains 'leaseId' -or [string]::IsNullOrWhiteSpace([string]$item.leaseId) -or
+                $fields -notcontains 'leaseUntil' -or [string]::IsNullOrWhiteSpace([string]$item.leaseUntil)) {
+                throw 'Invalid ADOS queue: a claimed task requires a lease ID and expiration.'
+            }
+            try { $null = [DateTimeOffset]::Parse([string]$item.leaseUntil) }
+            catch { throw 'Invalid ADOS queue: a claimed task has an invalid lease expiration.' }
+        }
+    }
+    return $queue
+}
+
 function Get-AdosRelativePath {
     param([string]$Root, [string]$FullPath)
 
@@ -150,6 +200,116 @@ function Get-AdosBranch {
     Push-Location $Root
     try { return ((& git branch --show-current 2>$null | Out-String).Trim()) }
     finally { Pop-Location }
+}
+
+function Test-AdosVerificationState {
+    param($Value, [string]$Head, [string]$Branch, [string]$Fingerprint)
+
+    if ($null -eq $Value) { return $false }
+    $fields = @($Value.PSObject.Properties | ForEach-Object { $_.Name })
+    foreach ($required in @('head','branch','evidenceFingerprint','endEvidenceFingerprint','repositoryUnchanged')) {
+        if ($fields -notcontains $required) { return $false }
+    }
+    return [bool](
+        $Value.repositoryUnchanged -is [bool] -and $Value.repositoryUnchanged -and
+        [string]$Value.head -ceq $Head -and [string]$Value.branch -ceq $Branch -and
+        [string]$Value.evidenceFingerprint -ceq $Fingerprint -and
+        [string]$Value.endEvidenceFingerprint -ceq $Fingerprint
+    )
+}
+
+function Test-AdosEvidenceGateCurrent {
+    param($Gate, $Verification, $Scope, [string]$Head, [string]$Branch, [string]$Fingerprint)
+
+    if ($null -eq $Gate) { return $false }
+    $fields = @($Gate.PSObject.Properties | ForEach-Object { $_.Name })
+    foreach ($required in @('status','head','branch','evidenceFingerprint','inputsCurrent','generated')) {
+        if ($fields -notcontains $required) { return $false }
+    }
+    if ([string]$Gate.status -cne 'VERIFIED' -or $Gate.inputsCurrent -isnot [bool] -or -not $Gate.inputsCurrent -or
+        [string]$Gate.head -cne $Head -or [string]$Gate.branch -cne $Branch -or [string]$Gate.evidenceFingerprint -cne $Fingerprint) {
+        return $false
+    }
+    try { $gateAt = [DateTimeOffset]::Parse([string]$Gate.generated) }
+    catch { return $false }
+    if ($gateAt -gt [DateTimeOffset]::UtcNow.AddMinutes(1)) { return $false }
+    foreach ($artifact in @($Verification, $Scope)) {
+        if (-not (Test-AdosVerificationState $artifact $Head $Branch $Fingerprint)) { return $false }
+        $fields = @($artifact.PSObject.Properties | ForEach-Object { $_.Name })
+        if ($fields -notcontains 'status' -or [string]$artifact.status -cne 'PASS' -or $fields -notcontains 'generated') { return $false }
+        try { $artifactAt = [DateTimeOffset]::Parse([string]$artifact.generated) }
+        catch { return $false }
+        if ($artifactAt -gt $gateAt) { return $false }
+    }
+    return $true
+}
+
+function Get-AdosQueueCompletionEvidence {
+    param([string]$Root, [string]$TaskText, [string]$NotBefore = '', [string]$LeaseId = '')
+
+    $gate = Read-AdosJson (Join-Path $Root '.ai\evidence\evidence-gate.generated.json') $null
+    $gateFields = if ($null -ne $gate) { @($gate.PSObject.Properties | ForEach-Object { $_.Name }) } else { @() }
+    if ($gateFields -notcontains 'status' -or [string]$gate.status -cne 'VERIFIED') {
+        throw 'Completion requires a VERIFIED Evidence Gate. Run ADOS verification for this task first.'
+    }
+    foreach ($required in @('head','branch','evidenceFingerprint','generated','inputsCurrent')) {
+        if ($gateFields -notcontains $required) { throw "Completion requires current Evidence Gate metadata: missing $required." }
+    }
+    if ($gate.inputsCurrent -isnot [bool] -or -not $gate.inputsCurrent) {
+        throw 'Completion requires a VERIFIED Evidence Gate with current scope and verification inputs.'
+    }
+
+    $checkpoint = Read-AdosJson (Join-Path $Root '.ai\checkpoints\current.json') $null
+    $checkpointFields = if ($null -ne $checkpoint) { @($checkpoint.PSObject.Properties | ForEach-Object { $_.Name }) } else { @() }
+    foreach ($required in @('taskId','task','branch','generated')) {
+        if ($checkpointFields -notcontains $required) { throw 'Completion requires a checkpoint for the same queued task.' }
+    }
+    $taskId = Get-AdosTaskId $TaskText
+    if ([string]$checkpoint.taskId -cne $taskId -or [string]$checkpoint.task -cne $TaskText) {
+        throw 'Completion requires a checkpoint for the same queued task. Start/checkpoint its exact task text and verify it.'
+    }
+    $head = Get-AdosHead $Root
+    $branch = Get-AdosBranch $Root
+    $fingerprint = Get-AdosEvidenceFingerprint $Root
+    if ([string]$gate.head -cne $head -or [string]$gate.branch -cne $branch -or
+        [string]$checkpoint.branch -cne $branch -or [string]$gate.evidenceFingerprint -cne $fingerprint) {
+        throw 'Completion evidence does not match the current repository state. Run ADOS verification again.'
+    }
+    try {
+        $verifiedAt = [DateTimeOffset]::Parse([string]$gate.generated)
+        $checkpointAt = [DateTimeOffset]::Parse([string]$checkpoint.generated)
+        $minimumAt = if ($NotBefore) { [DateTimeOffset]::Parse($NotBefore) } else { $checkpointAt }
+    }
+    catch { throw 'Completion requires valid checkpoint, claim, and evidence timestamps.' }
+    if ($verifiedAt -lt $checkpointAt -or $verifiedAt -lt $minimumAt) {
+        throw 'Completion evidence predates the task checkpoint or current claim. Verify this attempt before completing it.'
+    }
+    if ($verifiedAt -gt [DateTimeOffset]::UtcNow.AddMinutes(1)) {
+        throw 'Completion evidence has a future timestamp. Check the clock and verify this task again.'
+    }
+    foreach ($artifactName in @('verification','scope-guard')) {
+        $artifact = Read-AdosJson (Join-Path $Root ('.ai\evidence\' + $artifactName + '.generated.json')) $null
+        $fields = if ($null -ne $artifact) { @($artifact.PSObject.Properties | ForEach-Object { $_.Name }) } else { @() }
+        if ($fields -notcontains 'status' -or [string]$artifact.status -cne 'PASS' -or $fields -notcontains 'generated') {
+            throw "Completion requires passing $artifactName evidence. Run ADOS verification again."
+        }
+        if ($artifactName -eq 'scope-guard' -and ($fields -notcontains 'task' -or [string]$artifact.task -cne $TaskText)) {
+            throw 'Completion requires scope evidence for the same queued task.'
+        }
+        if (-not (Test-AdosVerificationState $artifact $head $branch $fingerprint)) {
+            throw "Completion $artifactName evidence does not match the current repository state. Run ADOS verification again."
+        }
+        try { $artifactAt = [DateTimeOffset]::Parse([string]$artifact.generated) }
+        catch { throw "Completion requires a valid $artifactName timestamp." }
+        if ($artifactAt -lt $checkpointAt -or $artifactAt -lt $minimumAt) {
+            throw "Completion $artifactName evidence predates the task checkpoint or current claim. Run verification for this attempt."
+        }
+        if ($artifactAt -gt $verifiedAt) { throw "Completion Evidence Gate predates the latest $artifactName result. Run the gate again." }
+    }
+    return [pscustomobject]@{
+        taskId=$taskId; generated=[string]$gate.generated; head=$head; branch=$branch;
+        evidenceFingerprint=$fingerprint; leaseId=$LeaseId
+    }
 }
 
 function Add-AdosUsageEvent {

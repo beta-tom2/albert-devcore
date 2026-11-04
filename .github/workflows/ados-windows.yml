@@ -9,6 +9,8 @@ on:
       - "scripts/**"
       - "tests/**"
       - "template/**"
+      - "skills/**"
+      - ".gitattributes"
   push:
     branches: [main]
     paths:
@@ -17,6 +19,8 @@ on:
       - "scripts/**"
       - "tests/**"
       - "template/**"
+      - "skills/**"
+      - ".gitattributes"
   workflow_dispatch:
 
 permissions:
@@ -57,9 +61,41 @@ jobs:
         shell: powershell
         run: node --check .\scripts\ados-ts-references.js
 
+      - name: Verify manual execution routing
+        shell: powershell
+        run: .\tests\manual-route.ps1
+
       - name: Run ADOS smoke test
         shell: powershell
         run: .\tests\ados-smoke.ps1
+
+      - name: Verify project-state export and recovery
+        shell: powershell
+        run: .\tests\ados-state.ps1
+
+      - name: Verify checkpoint freshness and continuation
+        shell: powershell
+        run: .\tests\ados-resume.ps1
+
+      - name: Verify project-state publication with a mocked API
+        shell: powershell
+        run: .\tests\ados-state-publish.ps1
+
+      - name: Verify read-only runtime and skill status
+        shell: powershell
+        run: .\tests\ados-status.ps1
+
+      - name: Verify queue corruption and lease safety
+        shell: powershell
+        run: .\tests\ados-queue-safety.ps1
+
+      - name: Verify skill policy and pinned local artifacts
+        shell: powershell
+        run: .\tests\devcore-skills.ps1
+
+      - name: Verify owned-skill update, conflict checks and restore
+        shell: powershell
+        run: .\tests\devcore-skills-update.ps1
 
       - name: Confirm clean worktree
         shell: powershell

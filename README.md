@@ -35,6 +35,8 @@ ADOS orchestrates DevCore, incremental indexes, project memory, verification evi
 ```powershell
 .\ados.ps1 doctor
 
+.\ados.ps1 status -ProjectPath "C:\path\to\repo" -IncludeSchedules -Json
+
 .\ados.ps1 start `
   -ProjectPath "C:\path\to\repo" `
   -Task "Fix the error when adding a found user as a friend"
@@ -63,6 +65,11 @@ ADOS orchestrates DevCore, incremental indexes, project memory, verification evi
 
 .\ados.ps1 resume `
   -ProjectPath "C:\path\to\repo"
+
+.\ados.ps1 checkpoint `
+  -ProjectPath "C:\path\to\repo" `
+  -Task "Fix the friends flow" `
+  -CheckpointPhase handoff
 
 .\ados.ps1 verify `
   -ProjectPath "C:\path\to\repo" `
@@ -107,7 +114,70 @@ ADOS orchestrates DevCore, incremental indexes, project memory, verification evi
 
 `start` saves a pre-change checkpoint, detects the project adapter, refreshes local memory, builds symbol-aware elastic context, and creates the prompt packet and handoff. `verify` refreshes deterministic indexes, runs Scope Guard, the bounded Verification Ladder, and Evidence Gate, then writes a bounded PR evidence summary. When a current test-to-symbol map finds at most 12 JavaScript or TypeScript tests under a recognized package runner, level 3 runs those package-local tests; otherwise it safely falls back to the existing full-suite behavior. `pr-summary` regenerates that summary without rerunning checks and marks it `NOT_READY` if the repository changed after Evidence Gate. A task is reported as `VERIFIED` only when required evidence was actually observed.
 
+### Observed runtime, skills and memory status
+
+`status` is read-only, including outside a project. It reports the actual runtime
+path, Git revision and dirty state; verifies the installed owned skill files
+against this runtime's lock; and compares package lineage with the shared skill
+contract. Use `-SkillsRoot` for an explicit installation and
+`-ExpectedRuntimeCommit` for an explicit expected local ref or commit.
+
+`-IncludeSchedules` inspects existing ADOS Night task metadata and the script
+path/revision each task actually invokes. It never runs or changes those tasks.
+Configuration, a local snapshot and a publication receipt are separate
+observations. This local status command does not verify current cloud freshness.
+
+`checkpoint` records a meaningful decision, implementation boundary, blocker or
+handoff in the existing task record. It does not run verification. `resume`
+reports branch, revision and worktree changes, including legacy unknown
+baselines, and keeps old evidence separate from the current verification state.
+
+The three owned skills share [behavior contract 1.1.0](docs/SKILL_BEHAVIOR_CONTRACT.md).
+Package metadata, exact file hashes and observed behavior are separate evidence.
+
+Use the [owned-skill update manager](docs/SKILL_UPDATES.md) to preview an upgrade
+or restore. It compares the exact installed and proposed files, checks both
+reviewed digests, and saves a verified backup before replacing the three owned
+packages. Other installed skills and their vendor lock remain outside its scope.
+
 ## ADOS modules
+
+### Portable project memory
+
+Use the [project-state contract](docs/ADOS_PROJECT_STATE.md) to export a bounded,
+revision-addressed checkpoint for another session. Configure explicit document
+sources in `.ados/state-export.json`, then run:
+
+```powershell
+.\ados.ps1 state-export -ProjectPath "C:\path\to\repo"
+.\ados.ps1 state-validate -SnapshotPath "C:\path\to\repo\.ai\local-output\project-state.json"
+.\ados.ps1 state-read -SnapshotPath "C:\path\to\repo\.ai\local-output\project-state.json"
+```
+
+The default output stays local. Export does not push data or start an external
+service. Publish a reviewed snapshot in its own project's authorized repository;
+keep private project data out of public DevCore. Accepted main, observed drafts,
+checkpoint verification and release readiness remain separate claims.
+
+The optional [state publisher](docs/ADOS_STATE_PUBLISH.md) has a read-only default:
+
+```powershell
+.\ados.ps1 state-publish -ProjectPath "C:\path\to\repo" `
+  -ExpectedRemoteCommit '<observed full destination branch SHA>'
+```
+
+It requires an explicit project configuration and an existing non-default review
+branch. `-ConfirmPublish` adds the reviewed snapshot to that branch; the command
+reports verified publication only after checking the remote commit and exact
+file bytes. It does not enable continuous synchronization or change a scheduler.
+
+Queue completion now requires current evidence for the claimed task. Renew a
+still-valid lease using `dispatch -DispatchAction renew -QueueId ...
+-DispatchLeaseId ...`; expiry never grants the old worker permission to continue
+writing shared files. Skill installation uses the policy and hash-locked local
+artifacts; it no longer performs unpinned package-manager downloads.
+
+### Available modules
 
 - Dispatcher: selects Codex, deterministic-first, or local-first execution.
 - Change Detector: reads current Git state before broad repository context.
@@ -152,7 +222,7 @@ Add work to the local queue, then let a Codex or ChatGPT Scheduled Task call the
 .\ados.ps1 dispatch -ProjectPath "C:\path\to\repo" -DispatchAction run
 ```
 
-The dispatcher claims at most one task with a time-bounded lease and writes `.ai/queue/dispatch.generated.json` plus a concise agent handoff. A second run returns `BUSY` until the lease is completed, released, or expires. Documentation and other low-risk work may receive an automatic read-only Ollama first pass; all edits and every protected domain remain Codex-owned. Completion and release require the exact queue ID and lease ID. The dispatcher never merges, deploys, or changes production.
+The dispatcher claims at most one task with a time-bounded lease and writes `.ai/queue/dispatch.generated.json` plus a concise agent handoff. A second run returns `BUSY` until the lease is completed, released, or expires. MANUAL_ONLY routing keeps work in Codex unless the task explicitly requests Ollama; an explicit local first pass remains bounded and read-only. Protected work remains Codex-owned. The dispatcher rejects unsupported external API routing before leasing a task. Completion and release require the exact queue ID and lease ID. The dispatcher never merges, deploys, or changes production.
 
 The recommended background agent prompt and lifecycle are documented in `docs/ADOS_AUTONOMOUS_DISPATCHER.md`. For local-project Scheduled Tasks, keep the computer on, ChatGPT desktop running, and the repository available at its configured path.
 

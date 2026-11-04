@@ -381,9 +381,14 @@ function Invoke-Route {
     param([string]$TaskText)
     if (-not $TaskText) { throw 'Task is required for route.' }
     $critical = '(?i)auth|security|rls|sql|migration|production|release|payment|broker|trading|financial|secret|credential|deploy|architecture|dependency|native|permission|encryption|supabase'
-    $localSafe = '(?i)readme|documentation|summary|wording|typo|naming|duplicate|todo|comment|log|boilerplate|test skeleton|changelog'
+    $manualRouter = Join-Path $PSScriptRoot 'scripts\manual-execution-router.ps1'
+    if (-not (Test-Path -LiteralPath $manualRouter -PathType Leaf)) { throw 'Manual execution routing policy is missing.' }
+    $policy = (& $manualRouter -Task $TaskText | Out-String) | ConvertFrom-Json
+    if ($policy.mode -ne 'MANUAL_ONLY') { throw 'Unsupported execution-routing mode; do not infer external authorization.' }
     if ($TaskText -match $critical) { 'CODEX_REQUIRED' }
-    elseif ($TaskText -match $localSafe) { 'LOCAL_FIRST_THEN_CODEX_VERIFY' }
+    elseif ($policy.route -eq 'EXTERNAL_API') { throw 'ADOS does not dispatch external API work. Use the separately configured explicit API workflow.' }
+    elseif ($policy.route -eq 'OLLAMA') { 'LOCAL_FIRST_THEN_CODEX_VERIFY' }
+    elseif ($policy.route -ne 'CODEX') { throw 'Unsupported manual execution route.' }
     else { 'CODEX_PRIMARY_WITH_DETERMINISTIC_TOOLS' }
 }
 

@@ -1,0 +1,240 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-04",
+  "baselineRevision": "199c9a6fdfc4bbf3812b96c2b1adf769e5137cb2",
+  "note": "DevCore installation lock, not the Vercel CLI lock format. Local SHA-256 values identify exact bytes; baselineRevision records the audited starting commit, not a claim that this file already existed there. External states describe audit readiness, not whether a skill is installed on the user laptop or in ChatGPT.",
+  "skills": [
+    {
+      "name": "albert-skill-router",
+      "state": "verified-local",
+      "kind": "repository-owned",
+      "path": "skills/albert-skill-router",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "cb2e662b42e619a23d45a610c3fc2940863d5795761bf15b45edf3bbbbb42fb9"
+        },
+        {
+          "path": "references/lineage.json",
+          "sha256": "837e753520b4dc3657b5e481ff2048c13408a8b919da3a177bb901a5a9fee632"
+        },
+        {
+          "path": "references/project-state.md",
+          "sha256": "9b8fb8d235916bab1517e19badedac2bc288ec6d5bf92ea184c7a904fa617d05"
+        }
+      ]
+    },
+    {
+      "name": "albert-architecture-review",
+      "state": "verified-local",
+      "kind": "repository-owned",
+      "path": "skills/albert-architecture-review",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "24485e720a76d9449514190a86d9de571818799e67f19efdaf91bc0f0f41aaca"
+        },
+        {
+          "path": "references/lineage.json",
+          "sha256": "52bf06bd9d9629534897e31d0cfedac2d685da476ec108640547b3276145a2e2"
+        }
+      ]
+    },
+    {
+      "name": "albert-design-director",
+      "state": "verified-local",
+      "kind": "repository-owned",
+      "path": "skills/albert-design-director",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "c295be2df6d46a526e1f31ec121c316278c4b0425f0642ed05e3194419faddcd"
+        },
+        {
+          "path": "references/lineage.json",
+          "sha256": "93dffd7fde543ebd1968971c8848cfc107c4f4f6dbe04fc1eb39b70a6bb887de"
+        }
+      ]
+    },
+    {
+      "name": "find-skills",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "frontend-design",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "impeccable",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "design-taste-frontend",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "emil-design-eng",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "animate",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "find-animation-opportunities",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "improve-animations",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "review-animations",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "apple-design",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "expo-native-ui",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "expo-data-fetching",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "expo-upgrade",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "vercel-react-native-skills",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "supabase",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "supabase-postgres-best-practices",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "systematic-debugging",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "verification-before-completion",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "tdd",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "codebase-design",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "domain-modeling",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "grilling",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "ai-video-generation",
+      "state": "not-installable",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter."
+    },
+    {
+      "name": "writing-plans",
+      "state": "not-installable",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter.",
+      "upstreamReview": {
+        "revision": "22f0b463e7a5e579904dd6211a520321035526f7",
+        "path": "skills/writing-plans/SKILL.md",
+        "license": "MIT",
+        "coverage": "entrypoint and license only; useful contract ideas retained, workflow not approved for installation"
+      }
+    },
+    {
+      "name": "playwright-cli",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter.",
+      "upstreamReview": {
+        "revision": "0ea36910324ed8aa2a5f460317cbd35881ee88d4",
+        "path": "packages/playwright-core/src/tools/skills/playwright-cli/SKILL.md",
+        "license": "Apache-2.0",
+        "coverage": "entrypoint and license only; references and runtime not yet audited as one artifact"
+      }
+    },
+    {
+      "name": "differential-review",
+      "state": "needs-audit",
+      "kind": "external",
+      "reason": "No audited, immutable installation artifact is stored here. Upstream lineage does not identify an installed local or ChatGPT adapter.",
+      "upstreamReview": {
+        "revision": "711af095215ad4ecde5b90cd1d0124b3f1c4ca9e",
+        "path": "plugins/differential-review/skills/differential-review/SKILL.md",
+        "license": "CC-BY-SA-4.0",
+        "coverage": "entrypoint and license only; supporting guides and agent integration still require audit"
+      }
+    }
+  ]
+}

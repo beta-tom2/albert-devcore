@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $DevCoreRoot = Split-Path -Parent $PSScriptRoot
 $DevCoreEntry = Join-Path $DevCoreRoot 'devcore.ps1'
+$SkillsInstaller = Join-Path $PSScriptRoot 'install-albert-dev-skills.ps1'
 
 if (-not (Test-Path -LiteralPath $DevCoreEntry)) {
     throw "DevCore entrypoint not found: $DevCoreEntry"
@@ -24,6 +25,9 @@ try {
         Write-Warning 'Project has pre-existing working-tree changes. Adoption will preserve existing files and add only missing Albert files.'
     }
 
+    # Verify source hashes and preserve divergent project copies before adoption writes.
+    & $SkillsInstaller -ProjectPath $repoRoot -DryRun
+
     Write-Host '[1/5] Checking and normalizing DevCore registry'
     & $DevCoreEntry registry-repair
     if ($LASTEXITCODE -ne 0) { throw "DevCore registry repair failed with exit code $LASTEXITCODE" }
@@ -33,19 +37,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "DevCore adopt failed with exit code $LASTEXITCODE" }
 
     Write-Host '[3/5] Installing Albert project router skills'
-    $localSkills = @(
-        'albert-skill-router',
-        'albert-architecture-review',
-        'albert-design-director'
-    )
-    foreach ($skill in $localSkills) {
-        $source = Join-Path $DevCoreRoot ("skills\" + $skill)
-        $target = Join-Path $repoRoot (".agents\skills\" + $skill)
-        if (-not (Test-Path -LiteralPath $source)) { throw "Albert skill source missing: $source" }
-        New-Item -ItemType Directory -Force -Path $target | Out-Null
-        Copy-Item -LiteralPath (Join-Path $source 'SKILL.md') -Destination (Join-Path $target 'SKILL.md') -Force
-        Write-Host "  installed: $skill"
-    }
+    & $SkillsInstaller -ProjectPath $repoRoot
 
     Write-Host '[4/5] Preparing local telemetry and API-gateway scratch locations'
     $analytics = Join-Path $repoRoot '.ai\analytics'
