@@ -25,8 +25,16 @@ function Assert-StateText {
     if ($Value -isnot [string] -or -not $Value.Trim() -or $Value.Length -gt $MaxLength -or $Value -match '[\x00-\x08\x0B\x0C\x0E-\x1F]') {
         throw "$Label must be bounded text."
     }
-    $secret='(?i)(api[_-]?key|secret|password|passwd|private[_-]?key|client[_-]?secret)\s*["'']?\s*[:=]\s*["'']?[^\s"'']{8,}|authorization\s*:\s*bearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|(postgres(ql)?|mysql|mongodb(\+srv)?|redis)://[^\s]+|https?://[^\s/@]+:[^\s/@]+@'
+    $secret='(?i)(api[_-]?key|secret|password|passwd|private[_-]?key|client[_-]?secret|(?:access[_-]?|auth[_-]?|refresh[_-]?)?token)\s*["'']?\s*[:=]\s*["'']?[^\s"'']{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|authorization\s*:\s*bearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|(postgres(ql)?|mysql|mongodb(\+srv)?|redis)://[^\s]+|https?://[^\s/@]+:[^\s/@]+@'
     if ($Value -match $secret) { throw "$Label contains credential-like text; export blocked." }
+}
+
+function Assert-StateSummary {
+    param($Value)
+    Assert-StateText $Value 'task summary' 1200
+    # Heuristics reduce accidental disclosure; arbitrary prose still needs review.
+    $localPath='(?i)\b[a-z]:[\\/]|\\\\[^\s\\]+\\|(?:^|[\s"''=(])(?:/|~/)\S+|\bfile://'
+    if ($Value -match $localPath) { throw 'Task summary contains an absolute local path; export blocked.' }
 }
 
 function Assert-StateHash {
@@ -88,7 +96,7 @@ function Assert-ProjectState {
         Assert-StateText $State.checkpoint.branch 'checkpoint branch' 240
         Assert-StateHash $State.checkpoint.head 'checkpoint head'
         Assert-StateDate $State.checkpoint.recordedAt 'checkpoint recordedAt'
-        if ($null -ne $State.checkpoint.summary) { Assert-StateText $State.checkpoint.summary 'task summary' 1200 }
+        if ($null -ne $State.checkpoint.summary) { Assert-StateSummary $State.checkpoint.summary }
     }
     Assert-StateKeys $State.evidence @('status','current','recordedAt','head','fingerprint') 'evidence'
     if ($State.evidence.status -cnotin @('VERIFIED','UNVERIFIED','MISSING','UNKNOWN') -or $State.evidence.current -isnot [bool]) { throw 'Invalid evidence status.' }

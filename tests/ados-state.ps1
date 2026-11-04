@@ -112,7 +112,23 @@ try {
     Write-AdosJson $checkpointPath $saved
     Expect-StateFailure { & $stateScript export -ProjectPath $testRoot -SnapshotPath '.ai/local-output/secrets.json' } 'credential-like' 'credential-like checkpoint summary is blocked'
     Assert-StateTest (-not (Test-Path -LiteralPath (Join-Path $testRoot '.ai/local-output/secrets.json'))) 'blocked summary produces no snapshot'
-    $saved.task='Continue FIXTURE-1 from verification; next action is an independent review.'
+    $summaryCases=@(
+        @{task=('token=ghp_' + ('0' * 36));pattern='credential-like';name='token assignment'},
+        @{task=('Review credential ghp_' + ('0' * 36));pattern='credential-like';name='standalone GitHub token'},
+        @{task='Review C:\Users\fixture\private\memo.txt';pattern='absolute local path';name='Windows absolute path'},
+        @{task='Review \\fixture\private\memo.txt';pattern='absolute local path';name='UNC absolute path'},
+        @{task='Review /home/fixture/private/memo.txt';pattern='absolute local path';name='POSIX absolute path'}
+    )
+    $summaryIndex=0
+    foreach ($case in $summaryCases) {
+        $saved.task=$case.task
+        Write-AdosJson $checkpointPath $saved
+        $summaryPath=Join-Path $testRoot ('.ai/local-output/summary-rejection-' + $summaryIndex + '.json')
+        Expect-StateFailure { & $stateScript export -ProjectPath $testRoot -SnapshotPath $summaryPath } $case.pattern ($case.name + ' is blocked in opt-in summary')
+        Assert-StateTest (-not (Test-Path -LiteralPath $summaryPath)) ($case.name + ' produces no snapshot')
+        $summaryIndex++
+    }
+    $saved.task='Continue FIXTURE-1 from verification; next action is an independent review. See docs/handoff.md and https://example.invalid/review.'
     Write-AdosJson $checkpointPath $saved
     & $stateScript export -ProjectPath $testRoot -SnapshotPath '.ai/local-output/handoff.json'
     $recovered=(& $stateScript read -SnapshotPath (Join-Path $testRoot '.ai/local-output/handoff.json') | Out-String) | ConvertFrom-Json

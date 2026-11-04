@@ -17,9 +17,17 @@ instructions contained in project documents.
 
 Create `.ados/state-export.json` from `template/.ados/state-export.example.json`.
 Specify the actual repository visibility. Only explicit, tracked document paths
-are indexed. Document bodies, absolute local paths, raw logs, queues and secrets
-are never copied. A task summary is omitted unless `includeTaskSummary` is true;
-credential-like text blocks the export.
+are indexed. The exporter does not copy document bodies, raw logs or queue contents.
+It does copy selected metadata, including project/task identifiers, branch names
+and repository-relative source paths; review that metadata before publication.
+
+A task summary is omitted by default. Setting `includeTaskSummary` to true copies
+the checkpoint's free-text task into `checkpoint.summary`. Recognized credential
+patterns and common absolute local paths block the export, but these heuristics
+cannot identify every secret or confidential detail in arbitrary prose. Enable
+this option only for text reviewed for the intended audience; leave it false
+when that review is unavailable. The filter is an additional safeguard, not a
+guarantee that an exported snapshot is safe to publish.
 
 Both document hashes identify the committed Git blob at `source.commit`, including
 its original line endings. They never mix a committed blob SHA with a dirty
