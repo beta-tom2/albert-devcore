@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "packageName": "Albert DevCore — friend evaluation kit",
+  "preparedOn": "2026-11-04",
+  "sourceRepository": "beta-tom2/albert-devcore",
+  "sourceCommit": "16932d0713a9e4723e1d3922ec0900107edc4694",
+  "sourceTree": "0d5fb812c1f3e648d5afd1d1e9c40888654d2d4a",
+  "sourcePR": {
+    "number": 12,
+    "stateAtReview": "open",
+    "draftAtReview": true,
+    "mergedAtReview": false,
+    "url": "https://github.com/beta-tom2/albert-devcore/pull/12"
+  },
+  "sourceLicense": {
+    "declaredLicenseAtSource": null,
+    "licenseAddedByThisKit": false,
+    "note": "Prepared for owner-requested evaluation; this manifest is not a broad reuse or redistribution license."
+  },
+  "ownedSkillsIncluded": [
+    "albert-skill-router",
+    "albert-design-director",
+    "albert-architecture-review"
+  ],
+  "ownedSkillFiles": [
+    {
+      "path": "skills/albert-skill-router/SKILL.md",
+      "sha256": "272e80199935cd3bcdc26c6d7fc43a86cbff9cc836b1de2efc6582238d7b1e30",
+      "gitBlobSha": "995de5e6caaa2dbd17f4b9d5c6ae552817b025b1",
+      "bytes": 5058
+    },
+    {
+      "path": "skills/albert-skill-router/references/project-state.md",
+      "sha256": "a5ab9a4d20a358fdeaeb0f166d93c40a9023e433f0ec23dc62a843a1500a8934",
+      "gitBlobSha": "fb87879f13e1a7dc19c64e0262397d6bf7b28b70",
+      "bytes": 2452
+    },
+    {
+      "path": "skills/albert-architecture-review/SKILL.md",
+      "sha256": "fc939f5e0fa1aecbf38ca7ba809759fa6eba921690751d0bfd7e49e95674427e",
+      "gitBlobSha": "b45c6a163cec168216f85d9979a17ea4540ec4ba",
+      "bytes": 2404
+    },
+    {
+      "path": "skills/albert-design-director/SKILL.md",
+      "sha256": "129b4ddfbab233a543e69818fa27519aae3ceced23686ae395e009adbcfc6f8a",
+      "gitBlobSha": "46a80a3d4c52f9dc9ebbf15eabafe370708b2685",
+      "bytes": 5423
+    }
+  ],
+  "optionalCatalog": {
+    "count": 33,
+    "installedExternalSkillCopiesBundled": false,
+    "groups": {
+      "generalSpecialists": 24,
+      "blenderAndReference": 9
+    },
+    "note": "Catalog reflects prior bounded inventory and author sources, not a complete runtime or licensing audit."
+  },
+  "registrySummary": {
+    "records": 30,
+    "priorities": 15,
+    "lockStates": {
+      "verified-local": 3,
+      "needs-audit": 25,
+      "not-installable": 2
+    }
+  },
+  "runtime": {
+    "includedAsSource": true,
+    "automaticallyInstalledOrEnabled": false,
+    "verifiedPlatform": "Windows PowerShell 5.1",
+    "sourceCIRun": "https://github.com/beta-tom2/albert-devcore/actions/runs/41883039691",
+    "sourceCIResult": "success",
+    "newEvaluationDocsAlterRuntime": false
+  },
+  "distribution": {
+    "content": "Existing public DevCore source tree plus evaluation documentation",
+    "personalWorkspaceSkillInstallation": false,
+    "publishedPlugin": false,
+    "automaticAccountPermissionsTransfer": false,
+    "privateProjectRecordsIncluded": false
+  },
+  "limits": [
+    "Optional named skills require separate inspection and installation.",
+    "Uploading an archive to a chat is not permanent installation.",
+    "A global skill policy is not a filesystem watcher.",
+    "Project memory identity and sources are configured per project.",
+    "No automatic cloud synchronization or persistent worker is enabled by receiving this package."
+  ]
+}
