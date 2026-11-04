@@ -147,6 +147,7 @@ function Save-AdosCheckpoint {
         phase = $CurrentPhase
         branch = Get-AdosBranch $Root
         head = Get-AdosHead $Root
+        evidenceFingerprint = Get-AdosEvidenceFingerprint $Root
         baselineChangedFiles = @(Get-AdosChangedFiles $Root | Where-Object { $_ -notmatch '(?i)^\.ai[\\/]' })
         outputs = [ordered]@{
             promptPacket = '.ai\context\prompt-packet.generated.md'
@@ -170,8 +171,50 @@ function Resume-AdosCheckpoint {
     if (-not $checkpoint) { throw 'No ADOS checkpoint exists for this project.' }
     $currentBranch = Get-AdosBranch $Root
     $currentHead = Get-AdosHead $Root
-    $branchChanged = [string]$checkpoint.branch -ne $currentBranch
-    $headChanged = [string]$checkpoint.head -ne $currentHead
+    $branchChanged = [string]$checkpoint.branch -cne $currentBranch
+    $headChanged = [string]$checkpoint.head -cne $currentHead
+    $currentFingerprint = Get-AdosEvidenceFingerprint $Root
+    $fingerprintProperty = $checkpoint.PSObject.Properties['evidenceFingerprint']
+    $checkpointFingerprint = $null
+    if ($null -ne $fingerprintProperty -and $fingerprintProperty.Value -is [string] -and
+        $fingerprintProperty.Value -cmatch '^[a-f0-9]{64}$') {
+        $checkpointFingerprint = [string]$fingerprintProperty.Value
+    }
+    $fingerprintKnown = $null -ne $checkpointFingerprint
+    $fingerprintChanged = $null
+    if ($fingerprintKnown) { $fingerprintChanged = $checkpointFingerprint -cne $currentFingerprint }
+
+    $reasons = @()
+    if ($branchChanged) { $reasons += 'BRANCH_CHANGED' }
+    if ($headChanged) { $reasons += 'HEAD_CHANGED' }
+    if (-not $fingerprintKnown) {
+        $reasons += $(if ($null -eq $fingerprintProperty) { 'CHECKPOINT_FINGERPRINT_MISSING' } else { 'CHECKPOINT_FINGERPRINT_UNKNOWN' })
+    }
+    elseif ($fingerprintChanged -and -not $branchChanged -and -not $headChanged) {
+        $reasons += 'WORKTREE_CHANGED'
+    }
+
+    if ($branchChanged) {
+        $status = 'BRANCH_CHANGED'
+        $nextAction = 'Review the current branch and task scope before choosing where to continue; reconcile the handoff and run Scope Guard, Verification Ladder, and Evidence Gate before completion.'
+    }
+    elseif ($headChanged) {
+        $status = 'HEAD_CHANGED'
+        $nextAction = 'Review commits and working-tree changes since the checkpoint, refresh the handoff, then continue on this branch; run Scope Guard, Verification Ladder, and Evidence Gate before completion.'
+    }
+    elseif (-not $fingerprintKnown) {
+        $status = 'BASELINE_UNKNOWN'
+        $nextAction = 'Review the working tree and handoff, then save a new checkpoint to establish a fingerprint baseline; continue with Scope Guard, Verification Ladder, and Evidence Gate before completion.'
+    }
+    elseif ($fingerprintChanged) {
+        $status = 'WORKTREE_CHANGED'
+        $nextAction = 'Review staged, unstaged, and untracked changes since the checkpoint, refresh the handoff, then continue; run Scope Guard, Verification Ladder, and Evidence Gate before completion.'
+    }
+    else {
+        $status = 'UNCHANGED'
+        $reasons += 'BASELINE_UNCHANGED'
+        $nextAction = 'Re-read project rules and the handoff, then continue from the saved phase; Scope Guard, Verification Ladder, and Evidence Gate still determine completion.'
+    }
     $files = @(Get-AdosChangedFiles $Root | Where-Object { $_ -notmatch '(?i)^\.ai[\\/]' })
     $payload = [ordered]@{
         schemaVersion = 1
@@ -181,20 +224,34 @@ function Resume-AdosCheckpoint {
         currentHead = $currentHead
         branchChanged = $branchChanged
         headChanged = $headChanged
+        checkpointFingerprint = $checkpointFingerprint
+        currentFingerprint = $currentFingerprint
+        fingerprintChanged = $fingerprintChanged
         currentChangedFiles = @($files)
-        safeToResume = (-not $branchChanged)
+        status = $status
+        reasons = @($reasons)
+        revalidationRequired = ($status -ne 'UNCHANGED')
+        verificationStatus = 'NOT_EVALUATED'
+        nextAction = $nextAction
+        # Compatibility advisory only: this does not authorize edits or validate evidence.
+        safeToResume = ($status -eq 'UNCHANGED')
     }
     Write-AdosJson (Join-Path $Root '.ai\context\resume.generated.json') $payload 10
     $lines = @(
         '# ADOS resume packet','',"Task: $($checkpoint.task)","Phase: $($checkpoint.phase)",
         "Checkpoint branch: $($checkpoint.branch)","Current branch: $currentBranch",
         "Checkpoint HEAD: $($checkpoint.head)","Current HEAD: $currentHead",
-        "Safe to resume: $($payload.safeToResume)",'','## Current changed files'
+        "Resume status: $status",("Reasons: " + ($reasons -join ', ')),
+        "Revalidation required by baseline drift: $($payload.revalidationRequired)",
+        'Verification status: NOT_EVALUATED',
+        "Safe to resume (compatibility advisory only): $($payload.safeToResume)",
+        '', 'This packet does not validate prior evidence or grant permission to edit. A changed HEAD can be normal progress; review the change and continue with current checks.',
+        '', '## Next action', $nextAction, '', '## Current changed files'
     )
     $lines += ConvertTo-AdosMarkdownList $files
     $lines += @('','## Resume order','1. Re-read AGENTS.md and project rules.','2. Review the elastic context and handoff.','3. Confirm the branch and working tree.','4. Continue from the saved phase.','5. Run Scope Guard, Verification Ladder, and Evidence Gate before completion.')
     Write-AdosUtf8 (Join-Path $Root '.ai\context\resume.generated.md') ($lines -join "`r`n")
-    Write-Host "Resume packet written (safe: $($payload.safeToResume), phase: $($checkpoint.phase))"
+    Write-Host "Resume packet written (status: $status, revalidation required: $($payload.revalidationRequired), phase: $($checkpoint.phase))"
     return $payload
 }
 

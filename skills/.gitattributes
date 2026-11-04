@@ -1,0 +1,2 @@
+# JSON artifacts may be hash-locked; preserve exact bytes across platforms.
+**/*.json text eol=lf

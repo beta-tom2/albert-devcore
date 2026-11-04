@@ -93,6 +93,41 @@ claiming it is still current. Unpublished work remains unknowable remotely.
 6. Save a meaningful checkpoint on decisions, verified increments, blockers and
    handoff. Messages notify; durable records carry the work.
 
+### Local checkpoint freshness
+
+New local checkpoints include the existing ADOS evidence fingerprint, covering
+the branch, HEAD and Git-visible staged, unstaged and untracked file state. This
+is an additive field in the local checkpoint; the portable snapshot v1 contract
+is unchanged. Ignored local runtime outputs do not become project evidence.
+
+`ados.ps1 resume` writes an advisory packet with `status`, `reasons`,
+`revalidationRequired` and `nextAction`:
+
+| Status | Meaning and next action |
+|---|---|
+| `UNCHANGED` | Branch, HEAD and known fingerprint match. Re-read rules and handoff, then continue from the saved phase. |
+| `HEAD_CHANGED` | The branch has advanced or otherwise moved. Review commits and working-tree changes, refresh the handoff and continue with current checks. |
+| `BRANCH_CHANGED` | Review the branch and task scope before deciding where to continue. |
+| `WORKTREE_CHANGED` | Branch and HEAD match, but the fingerprint differs. Review staged, unstaged and untracked changes and revalidate. |
+| `BASELINE_UNKNOWN` | A legacy checkpoint has no fingerprint, or its fingerprint format is unknown. Review the current state and save a new checkpoint before relying on a baseline. |
+
+Branch change takes precedence over HEAD change; the reasons list retains both
+when applicable, and also records a missing or unknown fingerprint. A fingerprint
+difference after a branch or HEAD change alone does not establish worktree drift.
+`fingerprintChanged` is null when the checkpoint fingerprint is unknown.
+
+`revalidationRequired` is true for drift or an unknown baseline. A false value
+means only that no baseline drift was found. Resume does not evaluate verification
+artifacts: `verificationStatus` is always `NOT_EVALUATED`. Scope Guard,
+Verification Ladder and Evidence Gate still determine completion on current inputs.
+Saving a fresh checkpoint also does not verify the work.
+
+The old `safeToResume` field remains a conservative compatibility advisory: it is
+true only for `UNCHANGED`. It is neither an execution permission nor a completion
+gate. A changed HEAD is normal during development and does not block generating
+or following a resume packet; its next action calls for review and continuation.
+Resume preserves the saved checkpoint and does not modify source files.
+
 One writer owns shared state initially. Distributed claims, autonomous execution,
 and laptop startup integration are separate capabilities. File sync is not a
 distributed lock and is not a backup. Keep a recoverable version history and
@@ -104,3 +139,7 @@ Run `tests/ados-state.ps1` under Windows PowerShell 5.1. It exercises source
 allowlisting, malformed input, fresh/stale evidence, confidential text rejection,
 optimistic replacement and recovery from a saved snapshot. Linux PowerShell is
 useful additional evidence but does not replace the Windows gate.
+
+`tests/ados-resume.ps1` uses a temporary Git repository to check unchanged and
+dirty baselines, same-branch HEAD changes, branch changes, same-HEAD worktree
+changes, legacy/unknown fingerprints and the separation from cached evidence.

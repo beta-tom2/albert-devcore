@@ -30,9 +30,9 @@
     "differential-review"
   ],
   "skills": [
-    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"medium-or-higher development work or specialized routing"},
-    {"name":"albert-architecture-review","source":"beta-tom2/albert-devcore","status":"approved","scope":["architecture"],"trigger":"broad architecture friction review; not tiny refactors"},
-    {"name":"albert-design-director","source":"beta-tom2/albert-devcore","status":"approved","scope":["ui","ux","frontend","motion","web","mobile"],"trigger":"meaningful application or website UI/design/motion work"},
+    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"project status, task recovery, agent handoff, new-project adoption, or medium-or-higher development/specialized routing; skip obvious tiny fixes"},
+    {"name":"albert-architecture-review","source":"beta-tom2/albert-devcore","status":"approved","scope":["architecture"],"trigger":"broad architecture friction review, read-only unless implementation is authorized; skip tiny refactors"},
+    {"name":"albert-design-director","source":"beta-tom2/albert-devcore","status":"approved","scope":["ui","ux","frontend","motion","web","mobile"],"trigger":"meaningful application or website UI/design/motion creation or read-only review; skip tiny copy/spacing and backend-only work"},
     {"name":"find-skills","source":"vercel-labs/skills","status":"approved","scope":["meta"],"trigger":"skill discovery only"},
 
     {"name":"frontend-design","source":"anthropics/skills","status":"approved-under-wrapper","scope":["ui","ux","frontend"],"trigger":"new or substantial user-facing design direction via albert-design-director"},

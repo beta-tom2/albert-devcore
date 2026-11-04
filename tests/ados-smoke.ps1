@@ -275,10 +275,10 @@ $dispatchAgain = Read-Json '.ai\queue\dispatch.generated.json'
 & $Quality all -ProjectPath $ResolvedFixture -Task $dispatchAgain.task -AllowedScope @('src','tests') -MaxLevel 1 -RequireDiff $false
 & $Dispatcher complete -ProjectPath $ResolvedFixture -QueueId $dispatchAgain.queueId -LeaseId $dispatchAgain.leaseId -ResultStatus completed -ResultNote 'smoke completed'
 Assert-True (@((Read-Json '.ai\queue\tasks.json').tasks | Where-Object { $_.id -eq $dispatchAgain.queueId -and $_.status -eq 'completed' }).Count -eq 1) 'completion must close only the exact leased task'
-& $Operations queue-add -ProjectPath $ResolvedFixture -Task 'Review README wording' -Priority low
+& $Operations queue-add -ProjectPath $ResolvedFixture -Task 'through Ollama: Review README wording' -Priority low
 & $Dispatcher run -ProjectPath $ResolvedFixture -MaxFiles 100 -PrepareContext:$false -UseOllama:$false
 $localDispatch = Read-Json '.ai\queue\dispatch.generated.json'
-Assert-True ($localDispatch.route -eq 'LOCAL_FIRST_THEN_CODEX_VERIFY') 'safe documentation work must route local-first'
+Assert-True ($localDispatch.route -eq 'LOCAL_FIRST_THEN_CODEX_VERIFY') 'an explicit Ollama request may route unprotected work local-first'
 Assert-True ($localDispatch.details.localModel -eq 'DISABLED') 'test mode must disable Ollama without weakening the route'
 & $Operations checkpoint -ProjectPath $ResolvedFixture -Task $localDispatch.task -Phase 'verification'
 & $Quality all -ProjectPath $ResolvedFixture -Task $localDispatch.task -AllowedScope @('src','tests') -MaxLevel 1 -RequireDiff $false

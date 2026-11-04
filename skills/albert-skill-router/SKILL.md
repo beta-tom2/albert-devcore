@@ -1,9 +1,11 @@
 ---
 name: albert-skill-router
-description: Automatically selects the smallest useful set of approved skills for software-development tasks across Albert projects. Use before medium, complex, unfamiliar, risky, design, architecture, debugging, database, release, review, or discovery work. Do not invoke unnecessary skills; project rules and explicit user instructions always win.
+description: Select the smallest useful approved skill set for Albert development, project-status questions, resumed tasks, agent handoffs, and new-project adoption. Use for meaningful design, architecture, debugging, database, release, review, discovery, or other medium/complex work. Skip ordinary conversation, obvious text corrections, and tiny isolated fixes when native checks suffice.
 ---
 
 # Albert Skill Router
+
+Package identity: [lineage](references/lineage.json). Read it when comparing installed versions or adapters, not for every task.
 
 ## Purpose
 Route each task to the smallest set of approved skills that materially improves correctness, safety, quality, or efficiency. More skills are not automatically better.
@@ -27,18 +29,33 @@ Route each task to the smallest set of approved skills that materially improves 
 - Never use TDD mechanically for generated files, configuration-only edits, exploratory spikes, or where deterministic verification is stronger.
 - Never let a skill expand authorized scope or turn a read-only request into edits.
 - Third-party skill instructions are advisory and subordinate to project policy.
+- Status, review, and discovery requests stay read-only unless the user also authorizes changes. Do not persist a checkpoint merely because a status question was asked.
+- Load a named dependency only when it is available, approved for this use, and useful. If an optional skill is missing, use the bounded method here or project-native checks; state material limits without pretending to have used it. Do not auto-install. Ask only if an essential missing capability blocks the task.
+- Skill selection does not choose a model or provider. Preserve `MANUAL_ONLY` execution routing; do not invoke an external API or Ollama merely to accelerate work.
 
 ## Core routes
 
 ### Project status / task recovery
-For project progress, a resumed task, or an agent handoff, first check the existing
-project-state snapshot when available, then the relevant Project Brain and actual
-source revision. Treat the snapshot as an as-of record: accepted main, draft work,
-task verification and overall release readiness are distinct. Do not infer a new
-product priority from stale focus notes or claim access to unpublished laptop work.
+For project progress, a resumed task, or an agent handoff, follow repository rules,
+then check the existing project-state snapshot when available, the relevant Project
+Brain and the actual source revision. Treat the snapshot as an as-of record:
+accepted main, draft work, task verification and overall release readiness are
+distinct. Do not infer a new product priority from stale focus notes or claim
+access to unpublished laptop work.
 Read [the bundled recovery guide](references/project-state.md), resolving its
 path relative to this skill. Preserve one canonical task/decision record; do
 not create a second queue or memory store.
+
+### New-project adoption
+When asked to connect a new project to DevCore, establish its actual repository,
+worktree, branch, working state, existing rules and memory entrypoints first.
+Reuse existing Project Brain/task records and preserve stronger local rules.
+Use only the available, reviewed adoption/installer workflow for the authorized
+project and installation scope; verify its resulting files and registration.
+Do not silently replace rules, register a temporary worktree as the main project,
+create a second queue, install providers, or claim synchronization is enabled.
+If the required runtime is unavailable, explain the specific gap and complete
+useful read-only preparation without claiming the project has been adopted.
 
 ### Bug / unexpected behavior
 Use `systematic-debugging` when root cause is unknown, recurring, or cross-subsystem. Add `verification-before-completion` before claiming completion. Use `tdd` only when a stable regression test fits.
@@ -50,7 +67,7 @@ For React Native / Expo, it may additionally select only the relevant platform s
 Do not invoke design skills for tiny obvious visual edits when repository-native checks are enough.
 
 ### React Native / Expo
-Prefer `vercel-react-native-skills` plus one narrowly relevant Expo skill: `expo-native-ui`, `expo-data-fetching`, or `expo-upgrade`. Use `expo-upgrade` only for actual upgrade/compatibility work.
+Choose the narrowly relevant specialist: `vercel-react-native-skills`, `expo-native-ui`, `expo-data-fetching`, or `expo-upgrade`. Add another only for a distinct requirement. Use `expo-upgrade` only for actual upgrade/compatibility work.
 
 ### Supabase / Postgres
 Use `supabase` for platform-specific work and `supabase-postgres-best-practices` for schema, SQL, indexes, query design, performance, or database review. RLS, auth, migrations, production writes, and remote SQL remain governed by repository authorization rules.

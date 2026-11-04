@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('doctor','start','analyze','night','scheduler','dispatch','health','handoff','resume','verify','pr-summary','queue','benchmark','stats','failure','remember-regression','remember-negative','state-export','state-read','state-validate')]
+    [ValidateSet('doctor','status','start','checkpoint','analyze','night','scheduler','dispatch','health','handoff','resume','verify','pr-summary','queue','benchmark','stats','failure','remember-regression','remember-negative','state-export','state-read','state-validate','state-publish')]
     [string]$Command,
 
     [string]$ProjectPath = '.',
@@ -53,8 +53,17 @@ param(
     [ValidateRange(2,365)]
     [int]$HealthHistoryLimit = 90,
     [string]$StateConfigPath = '.ados/state-export.json',
+    [string]$StatePublishConfigPath = '.ados/state-publish.json',
+    [string]$ExpectedRemoteCommit = '',
+    [switch]$ConfirmPublish,
     [string]$SnapshotPath = '',
-    [string]$ExpectedSnapshotSha256 = ''
+    [string]$ExpectedSnapshotSha256 = '',
+    [string]$SkillsRoot = '',
+    [string]$ExpectedRuntimeCommit = '',
+    [switch]$IncludeSchedules,
+    [switch]$Json,
+    [ValidateSet('preparation','implementation','decision','verified','blocked','handoff')]
+    [string]$CheckpointPhase = 'implementation'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +80,8 @@ $Health = Join-Path $Root 'scripts\ados-health.ps1'
 $Scheduler = Join-Path $Root 'scripts\ados-scheduler.ps1'
 $Dispatcher = Join-Path $Root 'scripts\ados-dispatch.ps1'
 $ProjectState = Join-Path $Root 'scripts\ados-state.ps1'
+$StatePublisher = Join-Path $Root 'scripts\ados-state-publish.ps1'
+$RuntimeStatus = Join-Path $Root 'scripts\ados-status.ps1'
 
 function Require-File {
     param([string]$Path)
@@ -150,6 +161,8 @@ function Invoke-Doctor {
     Require-File $Scheduler
     Require-File $Dispatcher
     Require-File $ProjectState
+    Require-File $StatePublisher
+    Require-File $RuntimeStatus
     & $DevCore doctor
     Write-Host ''
     Write-Host 'ADOS components:'
@@ -164,6 +177,8 @@ function Invoke-Doctor {
     Write-Host ('{0,-28} PASS' -f 'safe Night Mode scheduler')
     Write-Host ('{0,-28} PASS' -f 'autonomous dispatcher')
     Write-Host ('{0,-28} PASS' -f 'portable project state')
+    Write-Host ('{0,-28} PASS' -f 'project state publication')
+    Write-Host ('{0,-28} PASS' -f 'runtime and skills status')
 }
 
 function Get-ElasticBudget {
@@ -241,14 +256,25 @@ function Invoke-Start {
     }
 }
 
-$repo = if ($Command -in @('doctor','state-read','state-validate')) { $null } else { Resolve-RepoRoot $ProjectPath }
+$repo = if ($Command -in @('doctor','status','state-read','state-validate')) { $null } else { Resolve-RepoRoot $ProjectPath }
 
 switch ($Command) {
     'doctor' { Invoke-Doctor }
+    'status' { & $RuntimeStatus -ProjectPath $ProjectPath -SkillsRoot $SkillsRoot -ExpectedRuntimeCommit $ExpectedRuntimeCommit -IncludeSchedules:$IncludeSchedules -Json:$Json }
     'state-export' { & $ProjectState export -ProjectPath $repo -ConfigPath $StateConfigPath -SnapshotPath $SnapshotPath -ExpectedSnapshotSha256 $ExpectedSnapshotSha256 }
     'state-read' { & $ProjectState read -SnapshotPath $SnapshotPath }
     'state-validate' { & $ProjectState validate -SnapshotPath $SnapshotPath }
+    'state-publish' {
+        $publication = @{ ProjectPath = $repo; ConfigPath = $StatePublishConfigPath; ExpectedRemoteCommit = $ExpectedRemoteCommit; ConfirmPublish = $ConfirmPublish }
+        if ($SnapshotPath) { $publication['SnapshotPath'] = $SnapshotPath }
+        & $StatePublisher @publication
+    }
     'start' { Invoke-Start $repo $Task }
+    'checkpoint' {
+        if (-not $Task) { throw 'Task is required for checkpoint.' }
+        Ensure-LocalExclude $repo
+        & $Operations checkpoint -ProjectPath $repo -Task $Task -Phase $CheckpointPhase
+    }
     'analyze' { Invoke-Analyze $repo $Task }
     'night' {
         Ensure-LocalExclude $repo

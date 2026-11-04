@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "skillName": "albert-design-director",
+  "adapter": "codex",
+  "contractVersion": "1.1.0",
+  "sourceRepository": "beta-tom2/albert-devcore",
+  "baselineSourceCommit": "16932d0713a9e4723e1d3922ec0900107edc4694"
+}

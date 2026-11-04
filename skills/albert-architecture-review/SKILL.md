@@ -1,11 +1,25 @@
 ---
 name: albert-architecture-review
-description: Review broad codebase architecture using deep-module, domain-modeling, and codebase-friction principles without forcing interactive questioning. Use for recurring architectural friction, module-boundary problems, testability issues, or AI-navigability problems. Do not use for tiny local refactors.
+description: Review broad codebase architecture for recurring friction, module-boundary problems, testability issues, or AI-navigability problems. Keep reviews read-only and nonblocking; implementation needs an authorized change scope. Skip tiny local refactors and isolated renames.
 ---
 
 # Albert Architecture Review
 
-Use this as the Albert-safe wrapper around the approved Matt Pocock architecture suite.
+Package identity: [lineage](references/lineage.json). Read it when comparing installed versions or adapters, not for every task.
+
+Use this bounded review method with repository evidence. The approved Matt Pocock
+architecture suite is optional supporting guidance, not a runtime prerequisite.
+
+## Authority and scope
+
+Safety/platform rules and explicit user instructions within those boundaries
+precede repository/scoped rules, Project Brain, this wrapper and optional skills.
+A review is read-only unless changes are also requested. Skill routing does not
+change `MANUAL_ONLY` model/provider routing or authorize protected actions.
+
+Load a supporting skill only if it is available, approved for this use and useful.
+If it is missing, continue with relevant source/tests and the method below, state
+material limits, and do not claim the missing skill was used or auto-install it.
 
 ## Inputs
 
@@ -19,9 +33,9 @@ Prefer:
 ## Method
 
 1. Scope before scanning. Focus on areas with actual friction or repeated change.
-2. Apply `codebase-design` vocabulary and deep-module principles where useful.
-3. Use `domain-modeling` only when terminology or domain boundaries genuinely need sharpening.
-4. Use `improve-codebase-architecture` to surface a small set of meaningful deepening opportunities.
+2. Inspect interfaces, coupling and test seams in relevant source. Consult `codebase-design` when available and useful.
+3. Consult `domain-modeling` only when available and terminology or domain boundaries need sharpening; preserve observed project invariants.
+4. Surface a small set of evidenced improvements; use `improve-codebase-architecture` when available and helpful.
 5. Treat the upstream `grilling` skill as optional interactive mode only. Do not block by default waiting for a questionnaire. If a decision is unresolved, state the decision tree, recommend a default, and continue with non-destructive analysis unless higher-precedence rules require user input.
 6. Preserve existing ADRs and project-specific terminology.
 7. Do not write architecture changes merely because an opportunity exists; implementation scope must come from the user's request.

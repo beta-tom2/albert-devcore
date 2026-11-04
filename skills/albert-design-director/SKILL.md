@@ -1,9 +1,11 @@
 ---
 name: albert-design-director
-description: Selects the smallest useful design-skill stack for application and website UI work across Albert projects. Use for meaningful UI/UX creation, redesign, visual polish, animation/motion, design review, or design-system work. Do not load all design skills at once.
+description: Select the smallest useful design skills for meaningful UI/UX creation, redesign, visual polish, motion, read-only design review, or design-system work. Preserve requested review versus implementation scope. Skip obvious copy/spacing fixes and backend-only work; do not load the whole design suite.
 ---
 
 # Albert Design Director
+
+Package identity: [lineage](references/lineage.json). Read it when comparing installed versions or adapters, not for every task.
 
 ## Purpose
 Coordinate approved design skills so they complement rather than override each other. This is a routing layer under `albert-skill-router`, not a replacement for repository rules, Project Brain, DevCore, ADOS, accessibility checks, or product requirements.
@@ -13,6 +15,16 @@ Safety and platform rules > explicit user instruction within those boundaries > 
 
 ## Core principle
 Start with zero optional design skills. Select only the minimum stack with a positive expected benefit. Never load every design skill merely because UI is involved.
+An audit or review stays read-only unless changes are also requested. Skill
+selection does not change `MANUAL_ONLY` model/provider routing or grant new access.
+
+## Available dependencies
+
+The specialists below are conditional dependencies. Load one only when available,
+approved for the task and useful. If it is missing, use the existing project design
+system, relevant source and available visual evidence to give a bounded assessment
+or authorized change. State material evidence limits; do not invent a visual check,
+claim a missing skill was used, auto-install it, or add a UI dependency to replace it.
 
 ## Roles
 

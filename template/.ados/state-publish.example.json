@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "projectId": "EXAMPLE",
+  "repository": {
+    "fullName": "owner/example",
+    "visibility": "private"
+  },
+  "branch": "project-state-review",
+  "destination": "docs/project-state/PROJECT_STATE.json"
+}
