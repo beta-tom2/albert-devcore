@@ -55,7 +55,15 @@ Before medium, complex, unfamiliar, risky, design, architecture, debugging, data
 
 ## Future-project inheritance
 
-New repositories adopted through DevCore must receive the template `AGENTS.md`, including the critical engineering and manual execution-routing policies, preserve stronger repository-specific rules, and become eligible for Albert Skill Router without requiring the user to remember to activate it manually.
+For Albert-owned projects, an authorized new-project creation task includes DevCore adoption by default. The agent performs the reviewed bootstrap after establishing the real Git root and existing rules/memory; the user need not repeat an activation request. The portable host rule is `template/GLOBAL_AGENTS.fragment.md`. A rule inside this repository alone does not configure another agent or computer.
+
+- Consult the installed router for meaningful work in existing projects, regardless of whether they are registered with DevCore. Registration, skill availability and actual invocation are separate facts.
+- Use the explicitly configured, reviewed DevCore checkout. Run `scripts/adopt-albert-project.ps1 -ProjectPath <root> -DryRun` before adoption; preserve stronger project rules, canonical memory and unrelated local work.
+- Bootstrap only the primary checkout of an owned project as part of authorized creation/adoption. A status/review request, a third-party checkout, or a temporary linked worktree does not trigger installation or registration.
+- Reuse existing Project Brain, adapter entrypoints or root `CONTEXT.md`. Do not create a competing task/decision store. A new repository without a first commit is supported.
+- Preserve divergent project-local skills. Use the separate reviewed skill manager for an authorized upgrade; do not bypass installer conflicts.
+- Verify resulting rules, memory entrypoints, installed hashes and a single registration. If the runtime or filesystem access is missing, report adoption as pending rather than installed.
+- This is an agent step during project creation, not a filesystem watcher. It does not enable provider routing, synchronization, publication or schedules.
 
 ## Changes to DevCore
 

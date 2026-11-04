@@ -1,2 +1,3 @@
 # Lock manifests hash exact source bytes on Windows and Unix.
 skills/**/*.md text eol=lf
+skills/**/references/lineage.json text eol=lf
