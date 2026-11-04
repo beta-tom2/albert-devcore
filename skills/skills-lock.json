@@ -12,7 +12,11 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "f64fef1178f4dc61683087bf2096ad033a4d5e5dd8b5a6891ddd05bf69529b85"
+          "sha256": "272e80199935cd3bcdc26c6d7fc43a86cbff9cc836b1de2efc6582238d7b1e30"
+        },
+        {
+          "path": "references/project-state.md",
+          "sha256": "a5ab9a4d20a358fdeaeb0f166d93c40a9023e433f0ec23dc62a843a1500a8934"
         }
       ]
     },
@@ -36,7 +40,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "a774fd0d14da76ec6e5ccdbff0d9e6d5615b7ef491a6bde7c24824d9e0d6aae3"
+          "sha256": "129b4ddfbab233a543e69818fa27519aae3ceced23686ae395e009adbcfc6f8a"
         }
       ]
     },

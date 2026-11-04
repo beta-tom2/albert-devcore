@@ -36,8 +36,9 @@ project-state snapshot when available, then the relevant Project Brain and actua
 source revision. Treat the snapshot as an as-of record: accepted main, draft work,
 task verification and overall release readiness are distinct. Do not infer a new
 product priority from stale focus notes or claim access to unpublished laptop work.
-Use `docs/ADOS_PROJECT_STATE.md` for the export/recovery contract. Preserve one
-canonical task/decision record; do not create a second queue or memory store.
+Read [the bundled recovery guide](references/project-state.md), resolving its
+path relative to this skill. Preserve one canonical task/decision record; do
+not create a second queue or memory store.
 
 ### Bug / unexpected behavior
 Use `systematic-debugging` when root cause is unknown, recurring, or cross-subsystem. Add `verification-before-completion` before claiming completion. Use `tdd` only when a stable regression test fits.

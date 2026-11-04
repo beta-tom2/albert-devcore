@@ -9,7 +9,7 @@ description: Selects the smallest useful design-skill stack for application and 
 Coordinate approved design skills so they complement rather than override each other. This is a routing layer under `albert-skill-router`, not a replacement for repository rules, Project Brain, DevCore, ADOS, accessibility checks, or product requirements.
 
 ## Precedence
-Explicit user instruction > safety/platform rules > repository and scoped `AGENTS.md` > Project Brain / project design system > DevCore/ADOS > this director > individual design skills.
+Safety and platform rules > explicit user instruction within those boundaries > repository and scoped `AGENTS.md` > Project Brain / project design system > DevCore/ADOS > this director > individual design skills.
 
 ## Core principle
 Start with zero optional design skills. Select only the minimum stack with a positive expected benefit. Never load every design skill merely because UI is involved.
