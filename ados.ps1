@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('doctor','start','analyze','night','scheduler','dispatch','health','handoff','resume','verify','pr-summary','queue','benchmark','stats','failure','remember-regression','remember-negative')]
+    [ValidateSet('doctor','start','analyze','night','scheduler','dispatch','health','handoff','resume','verify','pr-summary','queue','benchmark','stats','failure','remember-regression','remember-negative','state-export','state-read','state-validate')]
     [string]$Command,
 
     [string]$ProjectPath = '.',
@@ -38,7 +38,7 @@ param(
     [switch]$ConfirmSchedulerInstall,
     [switch]$ReplaceScheduledTask,
     [switch]$ConfirmSchedulerUninstall,
-    [ValidateSet('run','status','complete','release')]
+    [ValidateSet('run','status','complete','release','renew')]
     [string]$DispatchAction = 'run',
     [string]$DispatchLeaseId = '',
     [ValidateSet('completed','failed','blocked')]
@@ -51,7 +51,10 @@ param(
     [bool]$DispatchPrepareContext = $true,
     [bool]$DispatchUseOllama = $true,
     [ValidateRange(2,365)]
-    [int]$HealthHistoryLimit = 90
+    [int]$HealthHistoryLimit = 90,
+    [string]$StateConfigPath = '.ados/state-export.json',
+    [string]$SnapshotPath = '',
+    [string]$ExpectedSnapshotSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,6 +70,7 @@ $Operations = Join-Path $Root 'scripts\ados-operations.ps1'
 $Health = Join-Path $Root 'scripts\ados-health.ps1'
 $Scheduler = Join-Path $Root 'scripts\ados-scheduler.ps1'
 $Dispatcher = Join-Path $Root 'scripts\ados-dispatch.ps1'
+$ProjectState = Join-Path $Root 'scripts\ados-state.ps1'
 
 function Require-File {
     param([string]$Path)
@@ -145,6 +149,7 @@ function Invoke-Doctor {
     Require-File $Health
     Require-File $Scheduler
     Require-File $Dispatcher
+    Require-File $ProjectState
     & $DevCore doctor
     Write-Host ''
     Write-Host 'ADOS components:'
@@ -158,6 +163,7 @@ function Invoke-Doctor {
     Write-Host ('{0,-28} PASS' -f 'project health and trends')
     Write-Host ('{0,-28} PASS' -f 'safe Night Mode scheduler')
     Write-Host ('{0,-28} PASS' -f 'autonomous dispatcher')
+    Write-Host ('{0,-28} PASS' -f 'portable project state')
 }
 
 function Get-ElasticBudget {
@@ -235,10 +241,13 @@ function Invoke-Start {
     }
 }
 
-$repo = if ($Command -eq 'doctor') { $null } else { Resolve-RepoRoot $ProjectPath }
+$repo = if ($Command -in @('doctor','state-read','state-validate')) { $null } else { Resolve-RepoRoot $ProjectPath }
 
 switch ($Command) {
     'doctor' { Invoke-Doctor }
+    'state-export' { & $ProjectState export -ProjectPath $repo -ConfigPath $StateConfigPath -SnapshotPath $SnapshotPath -ExpectedSnapshotSha256 $ExpectedSnapshotSha256 }
+    'state-read' { & $ProjectState read -SnapshotPath $SnapshotPath }
+    'state-validate' { & $ProjectState validate -SnapshotPath $SnapshotPath }
     'start' { Invoke-Start $repo $Task }
     'analyze' { Invoke-Analyze $repo $Task }
     'night' {

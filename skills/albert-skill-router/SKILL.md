@@ -9,8 +9,8 @@ description: Automatically selects the smallest useful set of approved skills fo
 Route each task to the smallest set of approved skills that materially improves correctness, safety, quality, or efficiency. More skills are not automatically better.
 
 ## Precedence
-1. Explicit user instruction.
-2. Safety and platform rules.
+1. Safety and platform rules.
+2. Explicit user instruction within those boundaries.
 3. Repository `AGENTS.md` and nearest scoped `AGENTS.md`.
 4. Project-specific DevCore/ADOS adapter rules and Project Brain.
 5. This router.
@@ -29,6 +29,15 @@ Route each task to the smallest set of approved skills that materially improves 
 - Third-party skill instructions are advisory and subordinate to project policy.
 
 ## Core routes
+
+### Project status / task recovery
+For project progress, a resumed task, or an agent handoff, first check the existing
+project-state snapshot when available, then the relevant Project Brain and actual
+source revision. Treat the snapshot as an as-of record: accepted main, draft work,
+task verification and overall release readiness are distinct. Do not infer a new
+product priority from stale focus notes or claim access to unpublished laptop work.
+Use `docs/ADOS_PROJECT_STATE.md` for the export/recovery contract. Preserve one
+canonical task/decision record; do not create a second queue or memory store.
 
 ### Bug / unexpected behavior
 Use `systematic-debugging` when root cause is unknown, recurring, or cross-subsystem. Add `verification-before-completion` before claiming completion. Use `tdd` only when a stable regression test fits.

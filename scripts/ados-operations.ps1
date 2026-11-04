@@ -205,9 +205,7 @@ function Get-AdosQueuePath {
 
 function Read-AdosQueue {
     param([string]$Root)
-    $queue = Read-AdosJson (Get-AdosQueuePath $Root) $null
-    if (-not $queue) { return [pscustomobject]@{ schemaVersion=1; tasks=@() } }
-    return $queue
+    return Read-AdosQueueFile $Root
 }
 
 function Write-AdosQueue {
@@ -270,10 +268,15 @@ function Complete-AdosQueueTask {
                 if ([string]$item.status -eq 'claimed') {
                     throw "Queue task is leased by the autonomous dispatcher; use dispatch complete with the exact lease ID: $Id"
                 }
+                $completionEvidence = $null
+                if ($NewStatus -eq 'completed') {
+                    $completionEvidence = Get-AdosQueueCompletionEvidence $Root ([string]$item.task) ([string]$item.created)
+                }
                 $found = $true
                 $tasks += [pscustomobject]@{
                     id=$item.id; created=$item.created; updated=(Get-Date -Format o); task=$item.task;
-                    priority=$item.priority; status=$NewStatus; attempts=([int]$item.attempts + 1); note=$item.note
+                    priority=$item.priority; status=$NewStatus; attempts=([int]$item.attempts + 1); note=$item.note;
+                    completionEvidence=$completionEvidence
                 }
             }
             else { $tasks += $item }

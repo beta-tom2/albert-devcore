@@ -109,6 +109,31 @@ ADOS orchestrates DevCore, incremental indexes, project memory, verification evi
 
 ## ADOS modules
 
+### Portable project memory
+
+Use the [project-state contract](docs/ADOS_PROJECT_STATE.md) to export a bounded,
+revision-addressed checkpoint for another session. Configure explicit document
+sources in `.ados/state-export.json`, then run:
+
+```powershell
+.\ados.ps1 state-export -ProjectPath "C:\path\to\repo"
+.\ados.ps1 state-validate -SnapshotPath "C:\path\to\repo\.ai\local-output\project-state.json"
+.\ados.ps1 state-read -SnapshotPath "C:\path\to\repo\.ai\local-output\project-state.json"
+```
+
+The default output stays local. Export does not push data or start an external
+service. Publish a reviewed snapshot in its own project's authorized repository;
+keep private project data out of public DevCore. Accepted main, observed drafts,
+checkpoint verification and release readiness remain separate claims.
+
+Queue completion now requires current evidence for the claimed task. Renew a
+still-valid lease using `dispatch -DispatchAction renew -QueueId ...
+-DispatchLeaseId ...`; expiry never grants the old worker permission to continue
+writing shared files. Skill installation uses the policy and hash-locked local
+artifacts; it no longer performs unpinned package-manager downloads.
+
+### Available modules
+
 - Dispatcher: selects Codex, deterministic-first, or local-first execution.
 - Change Detector: reads current Git state before broad repository context.
 - Context Engine: generates maps, focused checks, and task packets.

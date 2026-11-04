@@ -199,6 +199,7 @@ Push-Location $ResolvedFixture
 try { & git restore --staged -- src\secret-fixture.ts }
 finally { Pop-Location }
 Remove-Item -LiteralPath (Join-Path $ResolvedFixture 'src\secret-fixture.ts') -Force
+& $Quality scope -ProjectPath $ResolvedFixture -Task 'Fix sendFriendRequest behavior' -AllowedScope @('src','tests')
 & $Quality verify -ProjectPath $ResolvedFixture -MaxLevel 2
 & $Quality evidence -ProjectPath $ResolvedFixture -RequireDiff $true
 Assert-True ((Read-Json '.ai\evidence\evidence-gate.generated.json').status -eq 'VERIFIED') 'evidence gate must verify an observed in-scope diff'
@@ -270,6 +271,8 @@ Assert-True $leaseRejected 'dispatcher must reject completion with the wrong lea
 Assert-True (@((Read-Json '.ai\queue\tasks.json').tasks | Where-Object { $_.id -eq $dispatch.queueId -and $_.status -eq 'pending' }).Count -eq 1) 'release must return the exact task to pending'
 & $Dispatcher run -ProjectPath $ResolvedFixture -MaxFiles 100 -PrepareContext:$false -UseOllama:$false
 $dispatchAgain = Read-Json '.ai\queue\dispatch.generated.json'
+& $Operations checkpoint -ProjectPath $ResolvedFixture -Task $dispatchAgain.task -Phase 'verification'
+& $Quality all -ProjectPath $ResolvedFixture -Task $dispatchAgain.task -AllowedScope @('src','tests') -MaxLevel 1 -RequireDiff $false
 & $Dispatcher complete -ProjectPath $ResolvedFixture -QueueId $dispatchAgain.queueId -LeaseId $dispatchAgain.leaseId -ResultStatus completed -ResultNote 'smoke completed'
 Assert-True (@((Read-Json '.ai\queue\tasks.json').tasks | Where-Object { $_.id -eq $dispatchAgain.queueId -and $_.status -eq 'completed' }).Count -eq 1) 'completion must close only the exact leased task'
 & $Operations queue-add -ProjectPath $ResolvedFixture -Task 'Review README wording' -Priority low
@@ -277,6 +280,8 @@ Assert-True (@((Read-Json '.ai\queue\tasks.json').tasks | Where-Object { $_.id -
 $localDispatch = Read-Json '.ai\queue\dispatch.generated.json'
 Assert-True ($localDispatch.route -eq 'LOCAL_FIRST_THEN_CODEX_VERIFY') 'safe documentation work must route local-first'
 Assert-True ($localDispatch.details.localModel -eq 'DISABLED') 'test mode must disable Ollama without weakening the route'
+& $Operations checkpoint -ProjectPath $ResolvedFixture -Task $localDispatch.task -Phase 'verification'
+& $Quality all -ProjectPath $ResolvedFixture -Task $localDispatch.task -AllowedScope @('src','tests') -MaxLevel 1 -RequireDiff $false
 & $Dispatcher complete -ProjectPath $ResolvedFixture -QueueId $localDispatch.queueId -LeaseId $localDispatch.leaseId -ResultStatus completed -ResultNote 'local route tested'
 & $Operations queue-add -ProjectPath $ResolvedFixture -Task 'Review README wording for Supabase RLS release' -Priority protected
 & $Dispatcher run -ProjectPath $ResolvedFixture -MaxFiles 100 -PrepareContext:$false -UseOllama:$true
