@@ -238,6 +238,14 @@ function New-UpdateDirectory([string]$Path) {
     $null=[IO.Directory]::CreateDirectory($Path)
 }
 
+function Move-UpdateDirectory([string]$Source,[string]$Destination) {
+    Assert-UpdateSafePath $Source
+    Assert-UpdateSafePath $Destination
+    # Same-volume rename only. Unlike Move-Item, an existing destination is an
+    # error, never a request to nest the source inside another writer's folder.
+    [IO.Directory]::Move($Source,$Destination)
+}
+
 function Write-UpdateBytes([string]$Path,[byte[]]$Bytes) {
     Assert-UpdateSafePath $Path
     New-UpdateDirectory (Split-Path -Parent $Path)
@@ -370,14 +378,14 @@ try {
     New-UpdateDirectory $targetRoot
     foreach ($entry in $installed.manifest.entries) {
         if ($entry.present) {
-            Move-Item -LiteralPath (Get-UpdateChild $targetRoot $entry.name) -Destination (Get-UpdateChild $displacedRoot $entry.name) -ErrorAction Stop
+            Move-UpdateDirectory (Get-UpdateChild $targetRoot $entry.name) (Get-UpdateChild $displacedRoot $entry.name)
             $movedOld[$entry.name]=$true
         }
     }
     if ((Get-UpdateSnapshot $displacedRoot $selected).digest -cne $ExpectedInstalledDigest) { throw 'Previous directories changed during replacement; rolling back.' }
     foreach ($entry in $source.snapshot.manifest.entries) {
         if ($entry.present) {
-            Move-Item -LiteralPath (Get-UpdateChild $stageRoot $entry.name) -Destination (Get-UpdateChild $targetRoot $entry.name) -ErrorAction Stop
+            Move-UpdateDirectory (Get-UpdateChild $stageRoot $entry.name) (Get-UpdateChild $targetRoot $entry.name)
             $promoted[$entry.name]=$true
         }
     }
@@ -403,19 +411,25 @@ catch {
             if ($promoted.ContainsKey($name) -and (Test-Path -LiteralPath $target)) {
                 $recovery=Get-UpdateChild (Join-Path $workspace 'failed-new') $name
                 New-UpdateDirectory (Split-Path -Parent $recovery)
-                Move-Item -LiteralPath $target -Destination $recovery -ErrorAction Stop
+                Move-UpdateDirectory $target $recovery
             }
             if ($movedOld.ContainsKey($name)) {
                 if (Test-Path -LiteralPath $target) { throw 'A concurrent writer occupies the restore target.' }
-                Move-Item -LiteralPath (Get-UpdateChild $displacedRoot $name) -Destination $target -ErrorAction Stop
+                Move-UpdateDirectory (Get-UpdateChild $displacedRoot $name) $target
             }
         }
         catch { $rollbackErrors+=@($name) }
     }
+    $rollbackDigest=$null
+    try {
+        $rollbackDigest=(Get-UpdateSnapshot $targetRoot $selected).digest
+        if ($rollbackDigest -cne $installed.digest) { $rollbackErrors+=@('installed-digest-mismatch') }
+    }
+    catch { $rollbackErrors+=@('installed-state-unreadable') }
     if ($null -ne $receipt) {
         $receipt.state=if ($rollbackErrors.Count -eq 0) { 'ROLLED_BACK' } else { 'RECOVERY_REQUIRED' }
         $receipt.recordedAt=[datetimeoffset]::UtcNow.ToString('o')
-        try { $receipt.installedAfterDigest=(Get-UpdateSnapshot $targetRoot $selected).digest; Write-UpdateJson (Join-Path $newBackup 'receipt.json') $receipt } catch { }
+        try { $receipt.installedAfterDigest=$rollbackDigest; Write-UpdateJson (Join-Path $newBackup 'receipt.json') $receipt } catch { }
     }
     throw "$failure Original and staged files are preserved when available. Backup: $newBackup; recovery workspace: $workspace; rollback conflicts: $($rollbackErrors -join ', ')."
 }

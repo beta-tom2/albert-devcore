@@ -47,7 +47,10 @@ After reviewing the exact snapshot and plan, the same command with
 - The destination cannot be `main`, `master`, the actual default branch or a
   branch GitHub reports as protected. Missing or unknown branch state fails.
 - The exact current remote head must match `ExpectedRemoteCommit` during
-  validation and again before the ref update. This command never creates a branch.
+  validation. The write uses `createCommitOnBranch` with that same
+  `expectedHeadOid`, so GitHub also checks the head as part of the commit-and-ref
+  operation. A concurrent advance or rewind does not qualify as the expected
+  head. This command never creates a branch.
 - The source commit must exist in this repository. Every indexed document path
   must identify its declared committed blob, and the remote blob bytes must match
   the snapshot's SHA-256. Local uncommitted document bodies are not published.
@@ -55,15 +58,17 @@ After reviewing the exact snapshot and plan, the same command with
   indexed canonical source, publication/export configuration or the local receipt.
   An existing destination must already be a valid snapshot for the same project,
   repository and visibility. Unrelated JSON, symlinks and directories are rejected.
-- A new tree uses the expected remote parent's tree and changes exactly one
-  snapshot path. A new commit has only `ExpectedRemoteCommit` as its parent.
-  Ref update always uses `force:false`; a concurrent advancing writer cannot be
-  overwritten by this candidate's fast-forward update.
+- One GraphQL mutation supplies exactly one `fileChanges.additions` entry and
+  no deletions. It appends the snapshot commit to the expected branch head and
+  updates that branch in the same operation. There are no separate REST blob,
+  tree, commit or ref writes, and no force update. The returned and read-back
+  commit must have only `ExpectedRemoteCommit` as its parent.
 - The published commit, destination blob and exact input bytes are read back.
   The branch is checked around read-back. Only this completed sequence produces
   `PUBLISHED_VERIFIED` with `remoteVerified:true`.
 
-GitHub CLI uses `--hostname github.com` and JSON on standard input. No shell
+GitHub CLI uses `--hostname github.com` and JSON on standard input. The commit
+is created as the authenticated GitHub account. No shell
 command interpolation, paid model API or additional service is involved. V1
 accepts ASCII branch/destination names and snapshots up to 128 KiB. Document
 hashes use committed bytes, preserving original line endings.
@@ -83,9 +88,9 @@ The local index, HEAD and product files are not updated.
 | `CONFLICT` | An expected remote revision changed. Review the actual branch before retrying. |
 | `REJECTED` | Configuration, identity, provenance, destination or another precondition failed. |
 | `TRANSPORT_UNAVAILABLE` / `API_UNAVAILABLE` | The transport or request failed. No verified publication is claimed. |
-| `REF_UPDATE_UNCONFIRMED` | The update may have reached GitHub, but its result was not confirmed. Inspect `candidateCommit` and the live ref before retrying. |
+| `REF_UPDATE_UNCONFIRMED` | The atomic operation returned errors, an incomplete response or a transport failure. Inspect the live ref and snapshot before retrying; `candidateCommit` can be null when no reliable commit identity was returned. |
 | `READBACK_FAILED` | A commit may already be published, but read-back failed or differed. `remoteVerified` remains false; inspect the recorded candidate/published commit. |
-| `UPDATE_PENDING` | The last durable record was written before ref update. An interrupted run requires a live check, not an assumption of success or failure. |
+| `UPDATE_PENDING` | The last durable record was written before the atomic mutation. An interrupted run requires a live check, not an assumption of success or failure. |
 
 An error throws after recording the available result when a safe receipt path
 can be established. Invalid repository/receipt paths can prevent a receipt from
@@ -93,21 +98,29 @@ being written at all. An old successful receipt is not proof of a later attempt.
 The receipt describes one observed attempt, not continuous synchronization or
 whole-project readiness. Source and publication commits are deliberately distinct.
 
-Remote objects created before a conflict may remain unreferenced; the command
-does not force a ref, roll another writer back or retry automatically. One writer
-should own publication initially. Fast-forward checks are not a distributed lock
-and do not protect against a separate actor force-rewriting branch history.
+GraphQL `errors` are rejected even if partial result data is also present; their
+arbitrary text is not copied into receipts. An error is not treated as proof that
+no side effect occurred. For an unknown commit identity, compare the live branch,
+its parent and destination bytes with `expectedRemoteCommit` and `snapshotSha256`
+in the receipt before deciding whether to retry. There is no automatic retry.
+
+The command does not force a ref or roll another writer back. One writer should
+own publication initially. The exact-head precondition protects this individual
+write, not later history: another authorized actor can still change the branch
+after it completes. The receipt remains an as-of observation, not a persistent lock.
 There is no startup integration, periodic synchronization or offline upload queue.
 
 ## Validation and references
 
 `tests/ados-state-publish.ps1` uses a temporary Git repository and replaces only
 the API transport in test scope. It performs no real GitHub writes. It covers
-preview, success, stale refs, races, unavailable service/read-back, byte mismatch,
+preview, success, stale refs, concurrent advance and ancestor rewind between the
+final GET and mutation, GraphQL errors/partial data, lost responses before and
+after commit, unavailable service/read-back, byte mismatch,
 identity/visibility/provenance failures, protected branches and canonical files.
 Windows PowerShell 5.1 is the required runtime gate. A mocked pass does not prove
 that credentials, GitHub permissions or a particular live repository allow a write.
 
 Primary API contracts: [GitHub CLI api](https://cli.github.com/manual/gh_api),
-[Git trees](https://docs.github.com/en/rest/git/trees#create-a-tree),
-[Git references](https://docs.github.com/en/rest/git/refs#update-a-reference).
+[createCommitOnBranch and expectedHeadOid](https://docs.github.com/en/graphql/reference/commits#createcommitonbranchinput),
+[CommittableBranch and file changes](https://docs.github.com/en/graphql/reference/git#filechanges).

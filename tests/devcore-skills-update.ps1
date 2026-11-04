@@ -162,25 +162,54 @@ try {
     Assert-UpdateTest ($restored.state -eq 'COMPLETED' -and $afterRestore.installedDigest -eq $originalDigest -and -not (Test-Path -LiteralPath (Join-Path $updateTestTarget 'albert-design-director'))) 'reviewed restore reproduces exact original file bytes, directories and missing-package state'
     Assert-UpdateTest ((Test-Path -LiteralPath (Join-Path $restored.backupPath 'previous/albert-skill-router/new-user-note.txt')) -and ([BitConverter]::ToString([IO.File]::ReadAllBytes($updateTestBinary))) -eq '00-01-02-0D-0A-7F-80-FF') 'restore backs up the current edited installation and preserves original binary bytes'
 
+    # Faults are injected only into this disposable copy, never through a
+    # production flag or global command override. Its new source digest must be
+    # planned again before each attempt, just like any real source change.
+    $managerOriginal=[IO.File]::ReadAllBytes($updateTestManager)
+    $managerText=[Text.Encoding]::UTF8.GetString($managerOriginal)
+    $renameLine='[IO.Directory]::Move($Source,$Destination)'
+    if ([regex]::Matches($managerText,[regex]::Escape($renameLine)).Count -ne 1) { throw 'Expected exactly one fixture rename boundary.' }
+    $failureCode=@'
+if ($Source.Replace('\','/') -like '*/stage/.agents/skills/albert-design-director') { throw 'Injected promotion failure.' }
+[IO.Directory]::Move($Source,$Destination)
+'@
+    Write-UpdateTestText $updateTestManager ($managerText.Replace($renameLine,$failureCode))
+    $failurePlan=Get-UpdateTestPlan
     $beforeFailureBackups=@(Get-ChildItem -LiteralPath $updateTestBackups -Directory | ForEach-Object { $_.FullName })
-    & {
-        $script:updateTestPromotions=0
-        function Move-Item {
-            [CmdletBinding()]
-            param([string]$LiteralPath,[string]$Destination)
-            if ($LiteralPath.Replace('\','/') -like '*/stage/.agents/skills/*') {
-                $script:updateTestPromotions++
-                if ($script:updateTestPromotions -eq 2) { throw 'Injected promotion failure.' }
-            }
-            Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
-        }
-        Expect-UpdateTestFailure { Invoke-UpdateTestChange $afterRestore } 'Injected promotion failure' 'a partial replacement failure is reported'
-    }
+    Expect-UpdateTestFailure { Invoke-UpdateTestChange $failurePlan } 'Injected promotion failure' 'a partial replacement failure is reported'
+    [IO.File]::WriteAllBytes($updateTestManager,$managerOriginal)
     $afterFailure=Get-UpdateTestPlan
     $failedBackup=@(Get-ChildItem -LiteralPath $updateTestBackups -Directory | Where-Object { $beforeFailureBackups -notcontains $_.FullName })
     Assert-UpdateTest ($afterFailure.installedDigest -eq $originalDigest -and $failedBackup.Count -eq 1) 'partial promotion restores the exact prior selected directory set'
     $failedReceipt=Get-Content -LiteralPath (Join-Path $failedBackup[0].FullName 'receipt.json') -Raw | ConvertFrom-Json
     Assert-UpdateTest ($failedReceipt.state -eq 'ROLLED_BACK' -and (Test-Path -LiteralPath (Join-Path $failedReceipt.workspace 'failed-new/albert-architecture-review')) -and -not (Test-Path -LiteralPath (Join-Path $updateTestProject '.agents/.albert-skills-update.lock'))) 'rollback keeps failed replacement bytes for inspection and releases its writer lock'
+
+    # Reproduce the check/rename race during rollback. The directory is created
+    # after the manager's Test-Path guard, immediately before the real .NET move.
+    $concurrentCode=@'
+if ($Source.Replace('\','/') -like '*/stage/.agents/skills/albert-design-director') { throw 'Injected promotion failure.' }
+if ($Source.Replace('\','/') -like '*/displaced/albert-architecture-review') {
+    $null=[IO.Directory]::CreateDirectory($Destination)
+    [IO.File]::WriteAllText((Join-Path $Destination 'concurrent.txt'),'Concurrent writer content')
+}
+[IO.Directory]::Move($Source,$Destination)
+'@
+    Write-UpdateTestText $updateTestManager ($managerText.Replace($renameLine,$concurrentCode))
+    $concurrentPlan=Get-UpdateTestPlan
+    $beforeConcurrentBackups=@(Get-ChildItem -LiteralPath $updateTestBackups -Directory | ForEach-Object { $_.FullName })
+    Expect-UpdateTestFailure { Invoke-UpdateTestChange $concurrentPlan } 'Injected promotion failure' 'concurrent rollback destination prevents silent nesting'
+    [IO.File]::WriteAllBytes($updateTestManager,$managerOriginal)
+    $concurrentBackup=@(Get-ChildItem -LiteralPath $updateTestBackups -Directory | Where-Object { $beforeConcurrentBackups -notcontains $_.FullName })
+    if ($concurrentBackup.Count -ne 1) { throw 'Expected one concurrent recovery backup.' }
+    $concurrentReceipt=Get-Content -LiteralPath (Join-Path $concurrentBackup[0].FullName 'receipt.json') -Raw | ConvertFrom-Json
+    $concurrentTarget=Join-Path $updateTestTarget 'albert-architecture-review'
+    $displacedOriginal=Join-Path $concurrentReceipt.workspace 'displaced/albert-architecture-review'
+    Assert-UpdateTest ($concurrentReceipt.state -eq 'RECOVERY_REQUIRED' -and (Get-Content -LiteralPath (Join-Path $concurrentTarget 'concurrent.txt') -Raw) -eq 'Concurrent writer content' -and -not (Test-Path -LiteralPath (Join-Path $concurrentTarget 'albert-architecture-review'))) 'existing concurrent directory remains intact and receives no nested old package'
+    Assert-UpdateTest ((Get-Content -LiteralPath (Join-Path $displacedOriginal 'SKILL.md') -Raw) -eq 'Old architecture wrapper' -and $concurrentReceipt.installedAfterDigest -ne $originalDigest) 'original bytes remain in displaced storage and failed rollback never claims the original digest'
+    # Complete recovery only inside this known fixture, preserving its synthetic
+    # concurrent folder separately before continuing the remaining checks.
+    [IO.Directory]::Move($concurrentTarget,(Join-Path $updateTestRoot 'preserved concurrent fixture'))
+    [IO.Directory]::Move($displacedOriginal,$concurrentTarget)
 
     if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
         $junction=Join-Path $updateTestTarget 'albert-skill-router/linked-content'

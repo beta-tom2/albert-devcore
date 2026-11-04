@@ -109,6 +109,9 @@ A caught replacement failure attempts to restore the displaced directories.
 Failed replacement directories are preserved in the reported recovery workspace,
 including any edits observed there. A concurrent directory occupying a restore
 target is not silently overwritten; the receipt reports `RECOVERY_REQUIRED`.
+Every rename fails if its destination exists, including a directory created
+between the preceding check and the rename. `ROLLED_BACK` requires the restored
+installed digest to match the complete pre-operation manifest.
 Inspect the named backup and workspace before taking further recovery action.
 
 The writer lock coordinates this manager's invocations. Close agents/editors that

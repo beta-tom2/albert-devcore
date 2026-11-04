@@ -27,14 +27,21 @@ function Invoke-PublishFixtureGit {
     return (($result | Out-String).Trim())
 }
 
+function Get-PublishFixtureFileState {
+    return (@(Get-ChildItem -LiteralPath $testRoot -Force -Recurse | Sort-Object FullName | ForEach-Object {
+        if ($_.PSIsContainer) { $_.FullName + '|DIRECTORY' }
+        else { $_.FullName + '|' + $_.Length + '|' + $_.LastWriteTimeUtc.Ticks + '|' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+    }) -join "`n")
+}
+
 function Reset-PublishFixture {
     param([string]$Mode = 'normal')
     $script:mode = $Mode
     $script:remoteHead = $script:sourceSha
     $script:apiCalls = New-Object System.Collections.ArrayList
     $script:uploadedContent = $null
-    $script:treeRequest = $null
     $script:commitRequest = $null
+    $script:pendingReceiptSeen = $false
     $script:publishConfig = [ordered]@{
         schemaVersion = 1; enabled = $true; projectId = 'FIXTURE'
         repository = [ordered]@{ fullName = 'fixture/project'; visibility = 'private' }
@@ -77,32 +84,34 @@ function Invoke-StatePublishApi {
             return [pscustomobject]@{ sha = $entry.sha; encoding = 'base64'; content = [Convert]::ToBase64String($bytes) }
         }
     }
-    if ($Method -eq 'POST' -and $Endpoint -eq "$base/git/blobs") {
-        $script:uploadedContent = $Body.content
-        return [pscustomobject]@{ sha = $script:blobSha }
-    }
-    if ($Method -eq 'POST' -and $Endpoint -eq "$base/git/trees") {
-        $script:treeRequest = $Body
-        return [pscustomobject]@{ sha = $script:newTreeSha }
-    }
-    if ($Method -eq 'POST' -and $Endpoint -eq "$base/git/commits") {
-        $script:commitRequest = $Body
-        if ($script:mode -eq 'race-before-update') { $script:remoteHead = $script:concurrentSha }
-        return [pscustomobject]@{ sha = $script:candidateSha; tree = [pscustomobject]@{ sha = $script:newTreeSha }; parents = @([pscustomobject]@{ sha = $script:sourceSha }) }
-    }
-    if ($Method -eq 'PATCH' -and $Endpoint -eq "$base/git/refs/heads/review-state") {
-        if ($Body.force -ne $false -or $Body.sha -cne $script:candidateSha) { throw 'Fixture rejected a forced or unexpected ref update.' }
-        if ($script:mode -eq 'race-during-update') {
-            $script:remoteHead = $script:concurrentSha
-            Stop-StatePublish 'API_UNAVAILABLE' 'Synthetic fast-forward rejection during a concurrent update.'
+    if ($Method -eq 'POST' -and $Endpoint -eq 'graphql') {
+        $script:commitRequest = $Body.variables.input
+        if ($Body.query -notmatch 'createCommitOnBranch' -or $script:commitRequest.branch.repositoryNameWithOwner -cne 'fixture/project' -or $script:commitRequest.branch.branchName -cne 'review-state') {
+            throw 'Fixture received an unexpected GraphQL publication.'
         }
-        if ($script:remoteHead -cne $script:sourceSha) { throw 'Fixture rejected a non-fast-forward update.' }
+        $pending = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $script:pendingReceiptSeen = $pending.status -eq 'UPDATE_PENDING' -and $pending.refUpdateAttempted -and -not $pending.remoteVerified -and $null -eq $pending.candidateCommit
+        if ($script:mode -eq 'transport-before-commit') { Stop-StatePublish 'API_UNAVAILABLE' 'Synthetic transport failure before the server committed.' }
+        if ($script:mode -eq 'race-forward') { $script:remoteHead = $script:concurrentSha }
+        if ($script:mode -eq 'race-rewind') { $script:remoteHead = $script:ancestorSha }
+        # Model the server's exact expectedHeadOid precondition, including rewinds.
+        if ($script:commitRequest.expectedHeadOid -cne $script:remoteHead -or $script:mode -eq 'graphql-error') {
+            return [pscustomobject]@{ data = [pscustomobject]@{ createCommitOnBranch = $null }; errors = @([pscustomobject]@{ message = 'SYNTHETIC_PROVIDER_ERROR_MUST_NOT_BE_LOGGED' }) }
+        }
+        if (@($script:commitRequest.fileChanges.additions).Count -ne 1 -or $script:commitRequest.fileChanges.additions[0].path -cne 'state/project-state.json') { throw 'Fixture received unexpected file changes.' }
+        $script:uploadedContent = $script:commitRequest.fileChanges.additions[0].contents
         $script:remoteHead = $script:candidateSha
-        return [pscustomobject]@{ ref = 'refs/heads/review-state'; object = [pscustomobject]@{ type = 'commit'; sha = $script:candidateSha } }
+        if ($script:mode -eq 'transport-after-commit') { Stop-StatePublish 'API_UNAVAILABLE' 'Synthetic lost response after the server committed.' }
+        $response = [pscustomobject]@{ data = [pscustomobject]@{ createCommitOnBranch = [pscustomobject]@{
+            commit = [pscustomobject]@{ oid = $script:candidateSha; tree = [pscustomobject]@{ oid = $script:newTreeSha }; parents = [pscustomobject]@{ totalCount = 1; nodes = @([pscustomobject]@{ oid = $script:sourceSha }) } }
+            ref = [pscustomobject]@{ name = 'review-state'; prefix = 'refs/heads/'; repository = [pscustomobject]@{ nameWithOwner = 'fixture/project' }; target = [pscustomobject]@{ oid = $script:candidateSha } }
+        } } }
+        if ($script:mode -eq 'graphql-partial-error') { $response | Add-Member -NotePropertyName errors -NotePropertyValue @([pscustomobject]@{ message = 'SYNTHETIC_PROVIDER_ERROR_MUST_NOT_BE_LOGGED' }) }
+        return $response
     }
     if ($Method -eq 'GET' -and $Endpoint -eq "$base/git/commits/$script:candidateSha") {
         if ($script:mode -eq 'readback-unavailable') { Stop-StatePublish 'API_UNAVAILABLE' 'Synthetic read-back service failure.' }
-        return [pscustomobject]@{ sha = $script:candidateSha; tree = [pscustomobject]@{ sha = $script:newTreeSha } }
+        return [pscustomobject]@{ sha = $script:candidateSha; tree = [pscustomobject]@{ sha = $script:newTreeSha }; parents = @([pscustomobject]@{ sha = $script:sourceSha }) }
     }
     if ($Method -eq 'GET' -and $Endpoint -eq "$base/git/trees/$script:newTreeSha") {
         return [pscustomobject]@{ sha = $script:newTreeSha; truncated = $false; tree = @([pscustomobject]@{ path = 'state'; type = 'tree'; mode = '040000'; sha = $script:nestedTreeSha }) }
@@ -143,8 +152,13 @@ try {
     Write-AdosJson (Join-Path $testRoot '.ados/state-export.json') ([ordered]@{ schemaVersion = 1; projectId = 'FIXTURE'; repository = [ordered]@{ fullName = 'fixture/project'; visibility = 'private' }; sources = @('README.md','AGENTS.md','metadata.json'); includeTaskSummary = $false })
     $null = Invoke-PublishFixtureGit @('add','.')
     $null = Invoke-PublishFixtureGit @('commit','-q','-m','Create publication fixture')
+    $script:ancestorSha = Invoke-PublishFixtureGit @('rev-parse','HEAD')
+    Write-AdosUtf8 (Join-Path $testRoot 'README.md') "# Synthetic publish fixture`nA newer committed document.`n"
+    $null = Invoke-PublishFixtureGit @('add','README.md')
+    $null = Invoke-PublishFixtureGit @('commit','-q','-m','Advance the snapshot baseline')
     $script:sourceSha = Invoke-PublishFixtureGit @('rev-parse','HEAD')
     $script:sourceTreeSha = Invoke-PublishFixtureGit @('rev-parse','HEAD^{tree}')
+    $script:concurrentSha = Invoke-PublishFixtureGit @('commit-tree',$script:sourceTreeSha,'-p',$script:sourceSha,'-m','Synthetic forward writer')
     $script:sourceEntries = @()
     $script:sourceBytes = @{}
     foreach ($name in @('README.md','AGENTS.md','metadata.json','package.json')) {
@@ -156,21 +170,23 @@ try {
     $configPath = Join-Path $testRoot '.ados/state-publish.json'
     $receiptPath = Join-Path $testRoot '.ai/local-output/state-publish.receipt.json'
     Reset-PublishFixture
-    $beforeFiles = @(& git -C $testRoot status --porcelain --untracked-files=all) -join "`n"
+    $beforeFiles = Get-PublishFixtureFileState
     $indexHash = (Get-FileHash -LiteralPath (Join-Path $testRoot '.git/index') -Algorithm SHA256).Hash
     $preview = Invoke-AdosStatePublish -ProjectPath $testRoot -ExpectedRemoteCommit $script:sourceSha
     Assert-PublishTest ($preview.status -eq 'PREVIEW' -and -not $preview.remoteVerified -and -not (Test-Path -LiteralPath $receiptPath)) 'preview writes no receipt and does not claim publication'
     Assert-PublishTest (@($script:apiCalls | Where-Object { $_.method -ne 'GET' }).Count -eq 0) 'preview makes only read-only API requests'
     Assert-PublishTest ((Get-FileHash -LiteralPath (Join-Path $testRoot '.git/index') -Algorithm SHA256).Hash -eq $indexHash) 'preview leaves the Git index bytes untouched'
-    Assert-PublishTest (((@(& git -C $testRoot status --porcelain --untracked-files=all) -join "`n") -eq $beforeFiles)) 'preview leaves working-tree contents and file inventory unchanged'
+    Assert-PublishTest ((Get-PublishFixtureFileState) -ceq $beforeFiles) 'preview leaves all fixture files, directories and Git metadata unchanged'
 
     Reset-PublishFixture
     $indexHash = (Get-FileHash -LiteralPath (Join-Path $testRoot '.git/index') -Algorithm SHA256).Hash
     $result = Invoke-AdosStatePublish -ProjectPath $testRoot -ExpectedRemoteCommit $script:sourceSha -ConfirmPublish
     Assert-PublishTest ($result.status -eq 'PUBLISHED_VERIFIED' -and $result.remoteVerified -and $script:remoteHead -eq $script:candidateSha) 'publication succeeds only after exact remote read-back'
-    Assert-PublishTest ($script:treeRequest.base_tree -eq $script:sourceTreeSha -and @($script:treeRequest.tree).Count -eq 1 -and $script:treeRequest.tree[0].path -eq 'state/project-state.json') 'new tree preserves the remote base and changes only the configured snapshot path'
-    Assert-PublishTest (@($script:commitRequest.parents).Count -eq 1 -and $script:commitRequest.parents[0] -eq $script:sourceSha) 'new commit has only the exact expected remote parent'
-    Assert-PublishTest (@($script:apiCalls | Where-Object { $_.method -eq 'PATCH' -and $_.body.force -eq $false }).Count -eq 1) 'ref update requests fast-forward only without force'
+    Assert-PublishTest (@($script:commitRequest.fileChanges.Keys).Count -eq 1 -and @($script:commitRequest.fileChanges.additions).Count -eq 1 -and $script:commitRequest.fileChanges.additions[0].path -eq 'state/project-state.json') 'atomic mutation requests only the configured snapshot addition and no deletions'
+    Assert-PublishTest ($script:commitRequest.expectedHeadOid -eq $script:sourceSha) 'server-side expectedHeadOid is the exact reviewed remote head'
+    $mutations = @($script:apiCalls | Where-Object { $_.method -ne 'GET' })
+    Assert-PublishTest ($mutations.Count -eq 1 -and $mutations[0].method -eq 'POST' -and $mutations[0].endpoint -ceq 'graphql') 'publication uses one atomic GraphQL mutation and no REST object/ref writes'
+    Assert-PublishTest $script:pendingReceiptSeen 'unconfirmed receipt is durable before the atomic mutation is attempted'
     Assert-PublishTest ((Get-FileHash -LiteralPath (Join-Path $testRoot '.git/index') -Algorithm SHA256).Hash -eq $indexHash -and (Invoke-PublishFixtureGit @('rev-parse','HEAD')) -eq $script:sourceSha) 'publication leaves the local index and HEAD untouched'
     $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert-PublishTest ($receipt.remoteVerified -and $receipt.publishedCommit -eq $script:candidateSha) 'verified publication is recorded in the local receipt'
@@ -179,12 +195,23 @@ try {
     $script:remoteHead = $script:concurrentSha
     $null = Assert-PublishFailure 'CONFLICT' 'stale expected remote head fails before writing'
     Assert-PublishTest (@($script:apiCalls | Where-Object { $_.method -ne 'GET' }).Count -eq 0) 'stale expected head creates no remote objects'
-    Reset-PublishFixture 'race-before-update'
-    $receipt = Assert-PublishFailure 'CONFLICT' 'concurrent update after object creation prevents ref update'
-    Assert-PublishTest (@($script:apiCalls | Where-Object { $_.method -eq 'PATCH' }).Count -eq 0 -and $receipt.candidateCommit -eq $script:candidateSha) 'unpublished candidate is recorded without replacing the concurrent head'
-    Reset-PublishFixture 'race-during-update'
-    $receipt = Assert-PublishFailure 'REF_UPDATE_UNCONFIRMED' 'failure during ref update is not reported as successful publication'
-    Assert-PublishTest ($script:remoteHead -eq $script:concurrentSha -and $receipt.refUpdateAttempted) 'fast-forward rejection preserves another writer and records the uncertain attempt'
+    Reset-PublishFixture 'race-forward'
+    $receipt = Assert-PublishFailure 'REF_UPDATE_UNCONFIRMED' 'an advancing writer between the final GET and mutation prevents a verified publication'
+    Assert-PublishTest ($script:remoteHead -eq $script:concurrentSha -and $script:commitRequest.expectedHeadOid -eq $script:sourceSha -and $null -eq $script:uploadedContent) 'atomic expected-head comparison preserves the concurrent forward commit'
+    Reset-PublishFixture 'race-rewind'
+    $receipt = Assert-PublishFailure 'REF_UPDATE_UNCONFIRMED' 'rewinding to an actual ancestor between GET and mutation cannot pass exact expected-head comparison'
+    Assert-PublishTest ($script:remoteHead -eq $script:ancestorSha -and $script:commitRequest.expectedHeadOid -eq $script:sourceSha -and $null -eq $script:uploadedContent) 'atomic mutation preserves the rewind instead of reintroducing removed history'
+    foreach ($transportMode in @('transport-before-commit','transport-after-commit')) {
+        Reset-PublishFixture $transportMode
+        $receipt = Assert-PublishFailure 'REF_UPDATE_UNCONFIRMED' ("$transportMode records an uncertain result without an invented commit identity")
+        $expectedHead = $(if ($transportMode -eq 'transport-before-commit') { $script:sourceSha } else { $script:candidateSha })
+        Assert-PublishTest ($script:remoteHead -eq $expectedHead -and $receipt.refUpdateAttempted -and $null -eq $receipt.candidateCommit -and $script:pendingReceiptSeen) ("$transportMode retains the pre-attempt receipt and requires inspection")
+    }
+    foreach ($errorMode in @('graphql-error','graphql-partial-error')) {
+        Reset-PublishFixture $errorMode
+        $receipt = Assert-PublishFailure 'REF_UPDATE_UNCONFIRMED' ("$errorMode cannot be treated as a successful mutation response")
+        Assert-PublishTest ($receipt.detail -notmatch 'SYNTHETIC_PROVIDER_ERROR_MUST_NOT_BE_LOGGED') 'arbitrary GraphQL error text is not copied into the receipt'
+    }
     Reset-PublishFixture 'readback-mismatch'
     $receipt = Assert-PublishFailure 'READBACK_FAILED' 'read-back byte mismatch never reports verified publication'
     Assert-PublishTest ($receipt.publishedCommit -eq $script:candidateSha -and $script:remoteHead -eq $script:candidateSha) 'read-back failure honestly retains the commit that may already be published'

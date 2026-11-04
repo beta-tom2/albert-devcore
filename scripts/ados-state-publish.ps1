@@ -66,10 +66,12 @@ function Resolve-StatePublishLocalPath {
 }
 
 function Invoke-StatePublishApi {
-    param([ValidateSet('GET','POST','PATCH')][string]$Method, [string]$Endpoint, $Body = $null)
+    param([ValidateSet('GET','POST')][string]$Method, [string]$Endpoint, $Body = $null)
     # This is the only transport boundary. There is no production mock/bypass flag.
-    if ($Endpoint -cnotmatch '^repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9%._/-]+)?$') {
-        Stop-StatePublish 'REJECTED' 'Unexpected GitHub API endpoint.'
+    $readOnly = $Method -eq 'GET' -and $null -eq $Body -and $Endpoint -cmatch '^repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9%._/-]+)?$'
+    $atomicCommit = $Method -eq 'POST' -and $Endpoint -ceq 'graphql' -and $null -ne $Body
+    if (-not $readOnly -and -not $atomicCommit) {
+        Stop-StatePublish 'REJECTED' 'Only repository GET requests and the explicit GraphQL publication are supported.'
     }
     $gh = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $gh) { Stop-StatePublish 'TRANSPORT_UNAVAILABLE' 'GitHub CLI gh is required; no publication was confirmed.' }
@@ -97,8 +99,14 @@ function Invoke-StatePublishApi {
         if (-not $process.WaitForExit(30000)) { $process.Kill(); Stop-StatePublish 'API_UNAVAILABLE' 'GitHub API timed out; publication is not confirmed.' }
         $text = $output.GetAwaiter().GetResult()
         $null = $errors.GetAwaiter().GetResult()
-        if ($process.ExitCode -ne 0) { Stop-StatePublish 'API_UNAVAILABLE' 'GitHub API request failed; check authenticated gh access and service/network availability.' }
-        return (ConvertFrom-StatePublishJson $text)
+        $response = $null
+        try { $response = ConvertFrom-StatePublishJson $text } catch { }
+        # gh can exit nonzero for a GraphQL errors envelope returned with HTTP 200.
+        # Let the caller reject that envelope without logging arbitrary error text.
+        $graphqlErrors = $atomicCommit -and $null -ne $response -and $null -ne $response.PSObject.Properties['errors']
+        if ($process.ExitCode -ne 0 -and -not $graphqlErrors) { Stop-StatePublish 'API_UNAVAILABLE' 'GitHub API request failed; check authenticated gh access and service/network availability.' }
+        if ($null -eq $response) { Stop-StatePublish 'API_UNAVAILABLE' 'GitHub API returned no readable JSON response; publication is not confirmed.' }
+        return $response
     }
     finally { $process.Dispose() }
 }
@@ -230,27 +238,39 @@ function Invoke-AdosStatePublish {
             $receipt.status = 'PREVIEW'; $receipt.detail = 'Validated plan: one snapshot file on the expected existing branch. No local or remote writes.'
         }
         else {
-            $receipt.stage = 'create-objects'
-            $blob = Invoke-StatePublishApi POST "repos/$repository/git/blobs" ([ordered]@{ content = $encoded; encoding = 'base64' })
-            if ($blob.sha -cnotmatch '^[a-f0-9]{40}$') { Stop-StatePublish 'REJECTED' 'Created blob has no valid identity.' }
-            $tree = Invoke-StatePublishApi POST "repos/$repository/git/trees" ([ordered]@{ base_tree = $parent.tree.sha; tree = @([ordered]@{ path = $destination; mode = '100644'; type = 'blob'; sha = $blob.sha }) })
-            if ($tree.sha -cnotmatch '^[a-f0-9]{40}$') { Stop-StatePublish 'REJECTED' 'Created tree has no valid identity.' }
-            $commit = Invoke-StatePublishApi POST "repos/$repository/git/commits" ([ordered]@{ message = ('chore: publish project state for ' + $config.projectId); tree = $tree.sha; parents = @($ExpectedRemoteCommit) })
-            if ($commit.sha -cnotmatch '^[a-f0-9]{40}$' -or $commit.tree.sha -cne $tree.sha -or @($commit.parents).Count -ne 1 -or $commit.parents[0].sha -cne $ExpectedRemoteCommit) { Stop-StatePublish 'REJECTED' 'Created commit does not have the exact expected parent and tree.' }
-            $receipt.candidateCommit = $commit.sha
-            if ((Get-StatePublishRef $repository $branch) -cne $ExpectedRemoteCommit) { Stop-StatePublish 'CONFLICT' 'Remote branch changed before ref update; candidate commit was not published.' }
+            # A single server-side operation compares the exact head, creates the
+            # one-file commit and advances the branch. GET + REST force:false is
+            # insufficient here: a concurrent rewind could still be fast-forward.
+            $query = 'mutation PublishProjectState($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid tree { oid } parents(first: 2) { totalCount nodes { oid } } } ref { name prefix repository { nameWithOwner } target { oid } } } }'
+            $mutationInput = [ordered]@{
+                branch = [ordered]@{ repositoryNameWithOwner = $repository; branchName = $branch }
+                expectedHeadOid = $ExpectedRemoteCommit
+                message = [ordered]@{ headline = ('chore: publish project state for ' + $config.projectId) }
+                fileChanges = [ordered]@{ additions = @([ordered]@{ path = $destination; contents = $encoded }) }
+            }
             $receipt.stage = 'ref-update'; $receipt.status = 'UPDATE_PENDING'; $receipt.refUpdateAttempted = $true
             Write-StatePublishReceipt $receiptPath $receipt
-            $updated = Invoke-StatePublishApi PATCH ("repos/$repository/git/refs/heads/" + [Uri]::EscapeDataString($branch)) ([ordered]@{ sha = $commit.sha; force = $false })
-            if ($updated.ref -cne ('refs/heads/' + $branch) -or $updated.object.sha -cne $commit.sha) { Stop-StatePublish 'REF_UPDATE_UNCONFIRMED' 'Ref update response does not confirm the candidate commit.' }
-            $receipt.publishedCommit = $commit.sha; $receipt.stage = 'readback'
-            if ((Get-StatePublishRef $repository $branch) -cne $commit.sha) { Stop-StatePublish 'CONFLICT' 'Remote head moved after update; current publication is not verified.' }
-            $published = Invoke-StatePublishApi GET ("repos/$repository/git/commits/" + $commit.sha)
-            if ($published.sha -cne $commit.sha -or $published.tree.sha -cne $tree.sha) { Stop-StatePublish 'READBACK_FAILED' 'Published commit/tree identity differs from the candidate.' }
+            $response = Invoke-StatePublishApi POST 'graphql' ([ordered]@{ query = $query; variables = [ordered]@{ input = $mutationInput } })
+            $errorProperty = $response.PSObject.Properties['errors']
+            if ($null -ne $errorProperty -and $null -ne $errorProperty.Value -and @($errorProperty.Value).Count -gt 0) {
+                Stop-StatePublish 'REF_UPDATE_UNCONFIRMED' 'GitHub returned GraphQL errors; inspect the live branch and snapshot before retrying. No publication is verified.'
+            }
+            $mutation = $response.data.createCommitOnBranch
+            $commit = $mutation.commit
+            if ($commit.oid -cnotmatch '^[a-f0-9]{40}$') { Stop-StatePublish 'REF_UPDATE_UNCONFIRMED' 'The mutation did not return a valid commit identity.' }
+            $receipt.candidateCommit = $commit.oid
+            if ($commit.tree.oid -cnotmatch '^[a-f0-9]{40}$' -or $commit.parents.totalCount -ne 1 -or @($commit.parents.nodes).Count -ne 1 -or $commit.parents.nodes[0].oid -cne $ExpectedRemoteCommit -or
+                $mutation.ref.name -cne $branch -or $mutation.ref.prefix -cne 'refs/heads/' -or $mutation.ref.repository.nameWithOwner -ine $repository -or $mutation.ref.target.oid -cne $commit.oid) {
+                Stop-StatePublish 'REF_UPDATE_UNCONFIRMED' 'The mutation did not confirm the expected repository, branch, parent and commit.'
+            }
+            $receipt.publishedCommit = $commit.oid; $receipt.stage = 'readback'
+            if ((Get-StatePublishRef $repository $branch) -cne $commit.oid) { Stop-StatePublish 'CONFLICT' 'Remote head moved after update; current publication is not verified.' }
+            $published = Invoke-StatePublishApi GET ("repos/$repository/git/commits/" + $commit.oid)
+            if ($published.sha -cne $commit.oid -or $published.tree.sha -cne $commit.tree.oid -or @($published.parents).Count -ne 1 -or $published.parents[0].sha -cne $ExpectedRemoteCommit) { Stop-StatePublish 'READBACK_FAILED' 'Published commit/tree/parent identity differs from the confirmed mutation.' }
             $readback = Get-StatePublishTreeEntry $repository $published.tree.sha $destination @{}
-            if ($null -eq $readback -or $readback.type -ne 'blob' -or $readback.mode -ne '100644' -or $readback.sha -cne $blob.sha -or
+            if ($null -eq $readback -or $readback.type -ne 'blob' -or $readback.mode -ne '100644' -or
                 [Convert]::ToBase64String((Read-StatePublishBlob $repository $readback.sha)) -cne $encoded) { Stop-StatePublish 'READBACK_FAILED' 'Published snapshot read-back does not match the exact input bytes.' }
-            if ((Get-StatePublishRef $repository $branch) -cne $commit.sha) { Stop-StatePublish 'CONFLICT' 'Remote head moved during read-back; current publication is not verified.' }
+            if ((Get-StatePublishRef $repository $branch) -cne $commit.oid) { Stop-StatePublish 'CONFLICT' 'Remote head moved during read-back; current publication is not verified.' }
             $receipt.status = 'PUBLISHED_VERIFIED'; $receipt.remoteVerified = $true; $receipt.detail = 'Exact snapshot bytes read back from the published commit and branch.'
         }
     }

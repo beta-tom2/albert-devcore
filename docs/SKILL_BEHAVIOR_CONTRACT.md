@@ -97,6 +97,14 @@ rules. It does not establish behavioral quality or cross-adapter equivalence.
 Matching contract versions establishes intended compatibility only. Matching names
 or catalog presence establishes still less. Report these levels separately.
 
+Initial bounded observations are stored separately in
+[`skill-routing-observations-20261104.json`](../tests/skill-routing-observations-20261104.json).
+That record includes the original isolated task material, root-checked file hashes
+and write scope, and separates worker-reported checks from independent evidence.
+Several tasks are deliberate variants of the planned scenarios. They do not count
+as execution of all ten definitions, a complete tool-trace audit, proof of implicit
+global discovery in a new Codex session, or cross-adapter equivalence.
+
 ## Compatibility
 
 The existing lock schema and default three-skill installation remain unchanged.

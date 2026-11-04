@@ -51,7 +51,8 @@ No roadmap item may require a paid third-party AI API. Ollama remains read-only,
 - [x] explicit checkpoint freshness states without promoting old verification evidence;
 - [x] MANUAL_ONLY enforcement in the dispatcher route, including negative prefix cases;
 - [x] shared skill contract and task-local behavioral scenario definitions;
-- [ ] record independent behavior observations for the candidate and active clients;
+- [x] record five fresh-agent observations across four task patterns, including saved cloud-router recovery, with original fixtures and independent file-scope checks;
+- [ ] verify implicit global skill discovery in a fresh laptop Codex session and complete remaining scenario coverage;
 - [ ] promote the reviewed candidate and verify the canonical scheduled runtime.
 
 Checked code capabilities do not imply that a schedule, publisher, external
