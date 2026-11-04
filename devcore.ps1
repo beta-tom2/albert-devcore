@@ -33,7 +33,10 @@ function Invoke-DevCoreGit {
         # Inspect the native exit code instead; optional locks would make status
         # refresh the index even during a read-only preflight.
         $ErrorActionPreference = 'Continue'
-        $output = (& git --no-optional-locks --literal-pathspecs -C $Root @Arguments 2>$null | Out-String).TrimEnd()
+        $gitOptions = @('--no-optional-locks')
+        # check-ignore already accepts literal paths and rejects pathspec magic.
+        if ($Arguments[0] -ne 'check-ignore') { $gitOptions += '--literal-pathspecs' }
+        $output = (& git @gitOptions -C $Root @Arguments 2>$null | Out-String).TrimEnd()
         $gitExitCode = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousPreference }
