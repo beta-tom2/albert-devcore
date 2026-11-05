@@ -1,6 +1,6 @@
 # Reviewed cross-project knowledge
 
-This directory is the **public, human-reviewed** library for generic DevCore knowledge. It intentionally starts with no claimed verified fixes. Entries are JSON files validated by the script 'scripts/ados-shared-knowledge.ps1'.
+This directory is the **public, human-reviewed** library for generic DevCore knowledge. It starts with two narrowly scoped, source-backed examples generalized from merged DevCore PR #12 and its passed Windows CI. They are not universal fixes. Entries are JSON files validated by the script 'scripts/ados-shared-knowledge.ps1'.
 
 Entry categories: solution, anti-pattern, component, design, decision. Categories do not grant permission to import external source files or licenses.
 
