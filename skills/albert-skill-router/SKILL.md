@@ -47,13 +47,22 @@ path relative to this skill. Preserve one canonical task/decision record; do
 not create a second queue or memory store.
 
 ### New-project adoption
-When asked to connect a new project to DevCore, establish its actual repository,
-worktree, branch, working state, existing rules and memory entrypoints first.
-Reuse existing Project Brain/task records and preserve stronger local rules.
-Use only the available, reviewed adoption/installer workflow for the authorized
-project and installation scope; verify its resulting files and registration.
+When asked to connect a project, or when the user's standing rules include
+DevCore adoption in authorized creation of a new owned project, perform that
+bootstrap without requiring a repeated activation request. First establish the
+actual repository, primary checkout, branch, working state, existing rules and
+memory entrypoints. A local Git repository can be new and have no first commit.
+Reuse existing Project Brain, adapter entrypoints or `CONTEXT.md`; preserve
+stronger local rules. Use the explicitly configured, reviewed runtime and its
+adoption dry run before writing. Verify resulting files, installed hashes and a
+single project registration. Registration and skill invocation are distinct.
+For an existing project, global skill availability does not require re-adoption.
+Preserve older or customized project-local skills; upgrading them uses the
+separate reviewed manager, never a bypass of installer conflicts.
 Do not silently replace rules, register a temporary worktree as the main project,
-create a second queue, install providers, or claim synchronization is enabled.
+adopt a third-party checkout, turn status/review into installation, create a
+second queue, install providers, or claim synchronization is enabled. This is an
+agent step during authorized creation/adoption, not a background folder watcher.
 If the required runtime is unavailable, explain the specific gap and complete
 useful read-only preparation without claiming the project has been adopted.
 

@@ -193,32 +193,61 @@ Run the focused installer contract checks with `tests/devcore-skills.ps1`. They 
 
 ## One-command project adoption
 
-Use the wrapper below for current and future repositories:
+Use the reviewed runtime's wrapper for an authorized current-project adoption
+or as the default bootstrap step while creating a new owned repository:
 
 ```powershell
+.\scripts\adopt-albert-project.ps1 -ProjectPath "C:\path\to\repo" -DryRun
 .\scripts\adopt-albert-project.ps1 -ProjectPath "C:\path\to\repo"
 ```
 
-The wrapper deliberately preserves existing project files and then performs the Albert adoption sequence:
+`-DryRun` checks the entire adoption path without writing project files, Git
+excludes or the global registry. A linked worktree, an output-file conflict or a
+divergent local skill is reported before adoption writes. A newly initialized
+Git repository does not need a first commit.
 
-1. runs DevCore `adopt` to install/preserve `AGENTS.md`, Project Brain context templates, local model policy, registration, repository maps and focused test context;
+After preflight, the wrapper performs the Albert adoption sequence:
+
+1. runs DevCore `adopt` to install missing rules and local model policy, preserve existing canonical memory, register the primary checkout and generate bounded context; minimal current-state/decision templates are created only when no existing memory is detected;
 2. copies the three Albert routing skills locally under `.agents/skills/`: `albert-skill-router`, `albert-architecture-review`, and `albert-design-director`;
 3. prepares local `.ai/analytics/` storage for Skill Telemetry and excludes it from Git commits;
 4. refreshes generated DevCore context after all routing files are present.
 
 Third-party skills remain global rather than being copied into every repository. This keeps project repositories small while making the Albert routing layer project-local and deterministic.
 
-If the repository already has stricter `AGENTS.md` or context files, they are preserved rather than overwritten.
+Existing `AGENTS.md` is preserved byte-for-byte. The host's global routing rule
+applies even when an existing AGENTS file is not replaced. Project-specific
+rules remain stronger than the common default. Project Brain files, configured
+adapter entrypoints and root `CONTEXT.md` are reused; their presence does not
+prove that their contents describe the current revision.
+
+The wrapper installs absent or identical own3 packages; it is not an updater for
+older or customized packages. Use the separate
+`scripts/manage-albert-dev-skills.ps1` plan/backup/upgrade workflow after reviewing
+the concrete differences. Unrelated third-party packages are outside that update.
 
 ## New project adoption
 
-For a new repository, the expected default is now one command:
+In a configured host, creating a new owned project includes bootstrap as part of
+the authorized task. The agent performs the command; the user does not have to
+remember to ask for DevCore activation:
 
 ```powershell
+.\scripts\adopt-albert-project.ps1 -ProjectPath "C:\path\to\new-repo" -DryRun
 .\scripts\adopt-albert-project.ps1 -ProjectPath "C:\path\to\new-repo"
 ```
 
-This removes the need to remember separate DevCore, Project Brain, Skill Router, Design Director and telemetry setup steps. Meaningful UI/UX/frontend/motion work routes through `albert-design-director`; backend-only and tiny visual work should not pay design-skill overhead.
+Install the reviewed `template/GLOBAL_AGENTS.fragment.md` into the host's existing
+global instructions without replacing unrelated rules, and configure the actual
+DevCore runtime path. A repository template by itself cannot alter global
+settings on another computer. See [default inheritance](DEFAULT_PROJECT_INHERITANCE.md)
+for the scope, failure behavior and verification contract.
+
+This default is an agent action during authorized creation/adoption. It does not
+watch arbitrary new folders or automatically modify third-party checkouts.
+Status and review remain read-only. Existing projects can use the installed
+global router without re-running adoption. Meaningful UI work routes through
+`albert-design-director`; platform skills and checks follow the actual stack.
 
 ## ChatGPT / Work
 

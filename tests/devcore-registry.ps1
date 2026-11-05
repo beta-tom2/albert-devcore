@@ -60,38 +60,30 @@ Write-Utf8NoBom $RegistryPath $legacyRegistry
 
 $DevCore = Join-Path $RepoRoot 'devcore.ps1'
 $Adopt = Join-Path $RepoRoot 'scripts\adopt-albert-project.ps1'
-$OriginalUserProfile = $env:USERPROFILE
-try {
-    $env:USERPROFILE = $ProfileRoot
+$projectsOutput = (& $DevCore projects -RegistryBasePath $ProfileRoot *>&1 | Out-String)
+Assert-True ($projectsOutput -match 'atlas-market-os\s+C:\\Projects\\atlas-market-os') 'projects must flatten legacy registry entries'
+Assert-True ($projectsOutput -match 'masha-albert-health\s+C:\\Projects\\masha-albert-health') 'projects must print every valid legacy entry'
+Assert-True ($projectsOutput -match 'very-vel\s+C:\\Projects\\very-vel') 'projects must preserve valid flat entries'
+Assert-True ($projectsOutput -notmatch 'System\.Object\[\]') 'projects must never print nested array type names'
+Assert-True ($projectsOutput -match 'invalid registry element') 'projects must warn about invalid registry elements'
 
-    $projectsOutput = (& $DevCore projects *>&1 | Out-String)
-    Assert-True ($projectsOutput -match 'atlas-market-os\s+C:\\Projects\\atlas-market-os') 'projects must flatten legacy registry entries'
-    Assert-True ($projectsOutput -match 'masha-albert-health\s+C:\\Projects\\masha-albert-health') 'projects must print every valid legacy entry'
-    Assert-True ($projectsOutput -match 'very-vel\s+C:\\Projects\\very-vel') 'projects must preserve valid flat entries'
-    Assert-True ($projectsOutput -notmatch 'System\.Object\[\]') 'projects must never print nested array type names'
-    Assert-True ($projectsOutput -match 'invalid registry element') 'projects must warn about invalid registry elements'
+& $Adopt -ProjectPath $Project -RegistryBasePath $ProfileRoot
 
-    & $Adopt -ProjectPath $Project
+$backups = @(Get-ChildItem -LiteralPath $RegistryRoot -Filter 'projects.backup-*.json')
+Assert-True ($backups.Count -eq 1) 'automatic adoption repair must create exactly one registry backup'
 
-    $backups = @(Get-ChildItem -LiteralPath $RegistryRoot -Filter 'projects.backup-*.json')
-    Assert-True ($backups.Count -eq 1) 'automatic adoption repair must create exactly one registry backup'
-
-    $registry = Get-Content -LiteralPath $RegistryPath -Raw | ConvertFrom-Json
-    $entries = @($registry | ForEach-Object { $_ })
-    Assert-True ($entries.Count -eq 4) 'adoption must preserve three valid projects and register the adopted project'
-    foreach ($entry in $entries) {
-        $properties = @($entry.PSObject.Properties.Name)
-        Assert-True (($properties.Count -eq 3) -and ($properties -contains 'name') -and ($properties -contains 'path') -and ($properties -contains 'registered')) 'registry must contain only normalized project objects'
-    }
-
-    $finalOutput = (& $DevCore projects *>&1 | Out-String)
-    Assert-True ($finalOutput -notmatch 'System\.Object\[\]') 'projects output must remain normalized after adoption'
-    $compactOutput = $finalOutput -replace '\s',''
-    $compactProject = $Project -replace '\s',''
-    Assert-True ($compactOutput.Contains($compactProject)) 'projects must print the newly adopted project path'
+$registry = Get-Content -LiteralPath $RegistryPath -Raw | ConvertFrom-Json
+$entries = @($registry | ForEach-Object { $_ })
+Assert-True ($entries.Count -eq 4) 'adoption must preserve three valid projects and register the adopted project'
+foreach ($entry in $entries) {
+    $properties = @($entry.PSObject.Properties.Name)
+    Assert-True (($properties.Count -eq 3) -and ($properties -contains 'name') -and ($properties -contains 'path') -and ($properties -contains 'registered')) 'registry must contain only normalized project objects'
 }
-finally {
-    $env:USERPROFILE = $OriginalUserProfile
-}
+
+$finalOutput = (& $DevCore projects -RegistryBasePath $ProfileRoot *>&1 | Out-String)
+Assert-True ($finalOutput -notmatch 'System\.Object\[\]') 'projects output must remain normalized after adoption'
+$compactOutput = $finalOutput -replace '\s',''
+$compactProject = $Project -replace '\s',''
+Assert-True ($compactOutput.Contains($compactProject)) 'projects must print the newly adopted project path'
 
 Write-Host 'DevCore registry regression test: PASS'

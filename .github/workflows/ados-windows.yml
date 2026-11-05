@@ -97,6 +97,14 @@ jobs:
         shell: powershell
         run: .\tests\devcore-skills-update.ps1
 
+      - name: Verify project registry normalization
+        shell: powershell
+        run: .\tests\devcore-registry.ps1
+
+      - name: Verify safe new-project adoption and memory inheritance
+        shell: powershell
+        run: .\tests\devcore-adoption.ps1
+
       - name: Confirm clean worktree
         shell: powershell
         run: |

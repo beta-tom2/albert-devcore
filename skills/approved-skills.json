@@ -30,7 +30,7 @@
     "differential-review"
   ],
   "skills": [
-    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"project status, task recovery, agent handoff, new-project adoption, or medium-or-higher development/specialized routing; skip obvious tiny fixes"},
+    {"name":"albert-skill-router","source":"beta-tom2/albert-devcore","status":"approved","scope":["all-dev-projects"],"trigger":"project status, task recovery, agent handoff, default authorized owned-project creation/adoption, or medium-or-higher development/specialized routing; skip obvious tiny fixes"},
     {"name":"albert-architecture-review","source":"beta-tom2/albert-devcore","status":"approved","scope":["architecture"],"trigger":"broad architecture friction review, read-only unless implementation is authorized; skip tiny refactors"},
     {"name":"albert-design-director","source":"beta-tom2/albert-devcore","status":"approved","scope":["ui","ux","frontend","motion","web","mobile"],"trigger":"meaningful application or website UI/design/motion creation or read-only review; skip tiny copy/spacing and backend-only work"},
     {"name":"find-skills","source":"vercel-labs/skills","status":"approved","scope":["meta"],"trigger":"skill discovery only"},

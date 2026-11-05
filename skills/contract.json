@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.2.0",
   "sourceRepository": "beta-tom2/albert-devcore",
-  "baselineSourceCommit": "16932d0713a9e4723e1d3922ec0900107edc4694",
+  "baselineSourceCommit": "3546dc49ce97220920afee44eca8907c6dca6dba",
   "coreSkills": [
     "albert-skill-router",
     "albert-architecture-review",
@@ -48,6 +48,10 @@
     {
       "id": "capability-claims",
       "rule": "An installed skill or matching contract version does not prove invocation, artifact parity, runtime installation, synchronization, a persistent server, third-party audit or completed evaluation."
+    },
+    {
+      "id": "default-owned-project-bootstrap",
+      "rule": "Where user standing rules authorize DevCore by default, creating a new owned project includes the reviewed bootstrap without another activation prompt. Resolve primary identity and preserve existing rules, memory and local work. Status/review, third-party checkouts and linked worktrees do not trigger adoption; unavailable runtime stays pending."
     }
   ]
 }

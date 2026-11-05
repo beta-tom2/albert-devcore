@@ -7,19 +7,138 @@ param(
     [string]$Task = '',
     [string[]]$Files = @(),
     [string]$Model = 'qwen2.5-coder:7b',
-    [int]$ContextBudgetBytes = 160000
+    [int]$ContextBudgetBytes = 160000,
+    [string]$RegistryBasePath = '',
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
 $DevCoreRoot = $PSScriptRoot
-$RegistryBase = $env:USERPROFILE
+$RegistryBase = $RegistryBasePath
+if ($RegistryBase) { $RegistryBase = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($RegistryBase) }
+if (-not $RegistryBase) { $RegistryBase = $env:USERPROFILE }
 if (-not $RegistryBase) { $RegistryBase = $HOME }
 if (-not $RegistryBase) { $RegistryBase = $DevCoreRoot }
 $RegistryPath = Join-Path $RegistryBase '.albert-devcore\projects.json'
+if ($DryRun -and $Command -notin @('adopt','update','register','registry-repair')) {
+    throw "DryRun is supported for adopt, update, register and registry-repair, not $Command."
+}
+
+function Invoke-DevCoreGit {
+    param([string]$Root,[string[]]$Arguments,[int[]]$AllowedExitCodes = @(0))
+    $null = Get-Command git -ErrorAction Stop
+    $previousPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell can turn native stderr into a terminating error.
+        # Inspect the native exit code instead; optional locks would make status
+        # refresh the index even during a read-only preflight.
+        $ErrorActionPreference = 'Continue'
+        $gitOptions = @('--no-optional-locks')
+        # check-ignore already accepts literal paths and rejects pathspec magic.
+        if ($Arguments[0] -ne 'check-ignore') { $gitOptions += '--literal-pathspecs' }
+        $output = (& git @gitOptions -C $Root @Arguments 2>$null | Out-String).TrimEnd()
+        $gitExitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousPreference }
+    if ($AllowedExitCodes -notcontains $gitExitCode) {
+        throw "Git read failed (exit $gitExitCode) in ${Root}: $($Arguments -join ' ')"
+    }
+    return [pscustomobject]@{ output=$output; exitCode=$gitExitCode }
+}
+
+function Assert-DevCoreTargetPath {
+    param([string]$Path,[ValidateSet('File','Directory')][string]$Kind = 'File')
+    $target = [IO.Path]::GetFullPath($Path)
+    $current = $target
+    while ($current) {
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($item) {
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing a linked DevCore write path: $current"
+            }
+            $needsDirectory = ($current -ne $target) -or ($Kind -eq 'Directory')
+            if ($needsDirectory -and -not $item.PSIsContainer) { throw "Directory required at DevCore write path: $current" }
+            if (-not $needsDirectory -and $item.PSIsContainer) { throw "File required at DevCore write path: $current" }
+        }
+        $parent = Split-Path -Parent $current
+        if (-not $parent -or $parent -eq $current) { break }
+        $current = $parent
+    }
+}
+
+function Get-DevCoreGitPath {
+    param([string]$Root,[string]$Relative)
+    $path = (Invoke-DevCoreGit $Root @('rev-parse','--git-path',$Relative)).output.Trim()
+    if (-not $path) { throw "Unable to resolve Git path '$Relative' for $Root" }
+    if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $Root $path }
+    return [IO.Path]::GetFullPath($path)
+}
+
+function Assert-PrimaryCheckout {
+    param([string]$Root)
+    $gitDirectory = (Invoke-DevCoreGit $Root @('rev-parse','--git-dir')).output.Trim()
+    $commonDirectory = (Invoke-DevCoreGit $Root @('rev-parse','--git-common-dir')).output.Trim()
+    if (-not [IO.Path]::IsPathRooted($gitDirectory)) { $gitDirectory = Join-Path $Root $gitDirectory }
+    if (-not [IO.Path]::IsPathRooted($commonDirectory)) { $commonDirectory = Join-Path $Root $commonDirectory }
+    if ([IO.Path]::GetFullPath($gitDirectory).TrimEnd('\','/') -ne [IO.Path]::GetFullPath($commonDirectory).TrimEnd('\','/')) {
+        throw 'Linked worktree adoption/registration is not supported. Use the primary checkout; do not register a temporary worktree as a new project.'
+    }
+}
+
+function Test-TrackedDevCorePath {
+    param([string]$Root,[string]$Relative)
+    $tracked = Invoke-DevCoreGit $Root @('ls-files','--error-unmatch','--',$Relative) @(0,1)
+    if ($tracked.exitCode -eq 0) { return $true }
+    # A staged deletion is absent from ls-files, but must not be recreated.
+    $deleted = Invoke-DevCoreGit $Root @('diff','--cached','--name-only','--diff-filter=D','--',$Relative)
+    return -not [string]::IsNullOrWhiteSpace($deleted.output)
+}
+
+function Assert-GeneratedContextTargets {
+    param([string]$Root,[switch]$IncludePacket)
+    $outputs = @(
+        @{ path='.ai/context/repo-map.generated.md'; header='# Generated repository map'; parts=@('## Top-level directories','## Top-level files','## Changed files') },
+        @{ path='.ai/context/import-map.generated.md'; header='# Generated import map'; parts=@('Lightweight lexical map. Verify source before acting.') },
+        @{ path='.ai/context/test-plan.generated.md'; header='# Generated focused test plan'; parts=@('- git diff --check - Patch integrity check.') },
+        @{ path='.ai/context/session-context.md'; header='# Session context'; parts=@('## Working tree','## Diff summary','## Recent commits','## Read order') }
+    )
+    if ($IncludePacket) { $outputs += @{ path='.ai/context/prompt-packet.generated.md'; header='# Generated prompt packet'; parts=@('## Selected files','## Execution rules') } }
+    foreach ($output in $outputs) {
+        $path = Join-Path $Root $output.path
+        Assert-DevCoreTargetPath $path
+        if (Test-TrackedDevCorePath $Root $output.path) { throw "Refusing to overwrite tracked DevCore output: $($output.path). Preserve or relocate the project file before refreshing context." }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $ignored = Invoke-DevCoreGit $Root @('check-ignore','--quiet','--',$output.path) @(0,1)
+        $text = [IO.File]::ReadAllText($path)
+        $firstLine = ($text -split '\r?\n', 2)[0]
+        $hasTimestamp = $text -match '(?m)^Generated: \d{4}-\d{2}-\d{2}T[^\r\n]+\r?$'
+        $recognized = ($firstLine -eq $output.header) -and $hasTimestamp
+        # Existing ignored caches predate the explicit marker. Their exact
+        # heading, timestamp and known scaffold provide the legacy provenance.
+        if (-not $text.Contains('<!-- albert-devcore:generated:v1 -->')) {
+            foreach ($part in $output.parts) { if (-not $text.Contains($part)) { $recognized = $false } }
+        }
+        if ($ignored.exitCode -ne 0 -or -not $recognized) {
+            throw "Refusing to overwrite unmanaged DevCore output: $($output.path). Only ignored, recognized generated caches may be refreshed."
+        }
+    }
+    Assert-DevCoreTargetPath (Get-DevCoreGitPath $Root 'info/exclude')
+}
+
+function Get-RepositoryRevision {
+    param([string]$Root)
+    $resolvedHead = Invoke-DevCoreGit $Root @('rev-parse','--verify','--quiet','HEAD') @(0,1)
+    $branch = (Invoke-DevCoreGit $Root @('branch','--show-current')).output.Trim()
+    if (-not $branch) { $branch = '(detached HEAD)' }
+    if ($resolvedHead.exitCode -eq 0) { return [pscustomobject]@{ head=$resolvedHead.output.Trim(); branch=$branch; hasCommit=$true } }
+    $symbolicHead = Invoke-DevCoreGit $Root @('symbolic-ref','--quiet','HEAD') @(0,1)
+    if ($symbolicHead.exitCode -ne 0) { throw "Unable to resolve HEAD in $Root" }
+    return [pscustomobject]@{ head='(no commits yet)'; branch=$branch; hasCommit=$false }
+}
 
 function Ensure-Directory {
     param([string]$Path)
-    if ($Path) { New-Item -ItemType Directory -Path $Path -Force | Out-Null }
+    if ($Path) { [IO.Directory]::CreateDirectory($Path) | Out-Null }
 }
 
 function Write-Utf8NoBom {
@@ -75,7 +194,7 @@ function Read-RegistryState {
 
         if ($hasRequiredValues) {
             if ($properties.Count -ne 3) { $state.needsRepair = $true }
-            $key = ([string]$Node.path).Trim().ToLowerInvariant()
+            $key = ([string]$Node.path).Trim().TrimEnd('\','/').Replace('/','\').ToLowerInvariant()
             if ($seenPaths.ContainsKey($key)) {
                 $state.needsRepair = $true
                 $warnings.Add("Ignoring duplicate registry path: $($Node.path)")
@@ -142,6 +261,7 @@ function Write-NormalizedRegistry {
 }
 
 function Invoke-RegistryRepair {
+    Assert-DevCoreTargetPath $RegistryPath
     $state = Read-RegistryState
     Write-RegistryWarnings $state
     if (-not $state.exists) {
@@ -152,19 +272,17 @@ function Invoke-RegistryRepair {
         Write-Host "Registry already normalized: $(@($state.entries).Count) project(s)."
         return
     }
+    if ($DryRun) { Write-Host "[DRY RUN] Would back up and normalize registry: $RegistryPath"; return }
     Write-NormalizedRegistry -Entries $state.entries -CreateBackup
     Write-Host "Registry repaired: $(@($state.entries).Count) valid project(s)."
 }
 
 function Resolve-RepositoryRoot {
     param([string]$Path)
-    $resolved = (Resolve-Path $Path).Path
-    Push-Location $resolved
-    try {
-        $root = (& git rev-parse --show-toplevel 2>$null | Out-String).Trim()
-        if (-not $root) { throw "Not a Git repository: $resolved" }
-        return [IO.Path]::GetFullPath($root).TrimEnd('\','/')
-    } finally { Pop-Location }
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    $root = (Invoke-DevCoreGit $resolved @('rev-parse','--show-toplevel')).output.Trim()
+    if (-not $root) { throw "Not a Git repository: $resolved" }
+    return [IO.Path]::GetFullPath($root).TrimEnd('\','/')
 }
 
 function Get-RelativePathCompat {
@@ -195,7 +313,7 @@ function Invoke-Doctor {
         else { $status = 'OPTIONAL-MISSING' }
         Write-Host ('{0,-18} {1}' -f $check.Name,$status)
     }
-    $registryStatus = if (Test-Path $RegistryPath) { 'PASS' } else { 'EMPTY' }
+    $registryStatus = if (Test-Path -LiteralPath $RegistryPath) { 'PASS' } else { 'EMPTY' }
     Write-Host ('{0,-18} {1}' -f 'registry',$registryStatus)
     if (Test-CommandAvailable 'ollama') { Write-Host "`nLocal models:"; & ollama list }
     if ($failed) { throw 'Required DevCore tools are missing.' }
@@ -203,13 +321,8 @@ function Invoke-Doctor {
 
 function Add-IgnoreRules {
     param([string]$Root)
-    Push-Location $Root
-    try { $ignore = (& git rev-parse --git-path info/exclude 2>$null | Out-String).Trim() }
-    finally { Pop-Location }
-    if (-not $ignore) { throw "Unable to resolve Git exclude path for $Root" }
-    if (-not [IO.Path]::IsPathRooted($ignore)) { $ignore = Join-Path $Root $ignore }
-    $ignore = [IO.Path]::GetFullPath($ignore)
-    Ensure-Directory (Split-Path -Parent $ignore)
+    $ignore = Get-DevCoreGitPath $Root 'info/exclude'
+    Assert-DevCoreTargetPath $ignore
     $required = @(
         '.ai/context/session-context.md',
         '.ai/context/repo-map.generated.md',
@@ -218,40 +331,48 @@ function Add-IgnoreRules {
         '.ai/context/prompt-packet.generated.md',
         '.ai/local-output/',
         '.ai/cache/',
+        '.ai/analytics/',
+        '.ai/external-api/',
         '*.local-ai.log'
     )
     $existing = if (Test-Path -LiteralPath $ignore) { @(Get-Content -LiteralPath $ignore) } else { @() }
-    foreach ($line in $required) {
-        if ($existing -notcontains $line) { Add-Content -LiteralPath $ignore -Value $line -Encoding UTF8 }
+    $missing = @($required | Where-Object { $existing -notcontains $_ })
+    if ($missing.Count -gt 0) {
+        Ensure-Directory (Split-Path -Parent $ignore)
+        $oldText = if (Test-Path -LiteralPath $ignore) { [IO.File]::ReadAllText($ignore) } else { '' }
+        $prefix = if ($oldText -and -not $oldText.EndsWith("`n")) { [Environment]::NewLine } else { '' }
+        [IO.File]::AppendAllText($ignore, ($prefix + ($missing -join [Environment]::NewLine) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
     }
 }
 
 function Copy-IfMissing {
     param([string]$Source,[string]$Destination)
-    if (-not (Test-Path $Destination)) {
+    if (-not (Test-Path -LiteralPath $Destination)) {
         Ensure-Directory (Split-Path -Parent $Destination)
-        Copy-Item $Source $Destination
+        Copy-Item -LiteralPath $Source -Destination $Destination
         Write-Host "Added: $Destination"
     } else { Write-Host "Preserved existing: $Destination" }
 }
 
 function Get-ChangedFiles {
     param([string]$Root)
-    Push-Location $Root
-    try {
-        $items = @()
-        $items += (& git -c core.safecrlf=false diff --name-only)
-        $items += (& git -c core.safecrlf=false diff --cached --name-only)
-        $items += (& git ls-files --others --exclude-standard)
-        return @($items | Where-Object { $_ } | Sort-Object -Unique)
-    } finally { Pop-Location }
+    $items = @()
+    foreach ($arguments in @(
+        @('-c','core.safecrlf=false','diff','--name-only'),
+        @('-c','core.safecrlf=false','diff','--cached','--name-only'),
+        @('ls-files','--others','--exclude-standard')
+    )) {
+        $text = (Invoke-DevCoreGit $Root $arguments).output
+        if ($text) { $items += @($text -split '\r?\n') }
+    }
+    return @($items | Where-Object { $_ } | Sort-Object -Unique)
 }
 
 function Get-SourceFiles {
     param([string]$Root,[int]$Limit=300)
     $extensions = @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.py','.rs','.go','.java','.kt','.kts')
     $excluded = '(?i)[\\/](node_modules|dist|build|coverage|\.git|\.ai|\.next|\.expo|ios|android|vendor)[\\/]'
-    return @(Get-ChildItem $Root -File -Recurse -ErrorAction SilentlyContinue |
+    return @(Get-ChildItem -LiteralPath $Root -File -Recurse -ErrorAction SilentlyContinue |
         Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() -and $_.FullName -notmatch $excluded -and $_.Length -lt 300000 } |
         Sort-Object FullName | Select-Object -First $Limit)
 }
@@ -260,6 +381,7 @@ function New-ImportMap {
     param([string]$Root)
     $lines = New-Object Collections.Generic.List[string]
     $lines.Add('# Generated import map')
+    $lines.Add('<!-- albert-devcore:generated:v1 -->')
     $lines.Add('')
     $lines.Add("Generated: $(Get-Date -Format o)")
     $lines.Add('')
@@ -292,9 +414,9 @@ function Get-TestRecommendations {
     $reasons = New-Object Collections.Generic.List[string]
     $scripts = @{}
     $packagePath = Join-Path $Root 'package.json'
-    if (Test-Path $packagePath) {
+    if (Test-Path -LiteralPath $packagePath) {
         try {
-            $package = Get-Content $packagePath -Raw | ConvertFrom-Json
+            $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
             if ($package.scripts) {
                 foreach ($property in $package.scripts.PSObject.Properties) { $scripts[$property.Name] = [string]$property.Value }
             }
@@ -323,6 +445,7 @@ function Get-TestRecommendations {
     Add-Test 'git diff --check' 'Patch integrity check.'
     $lines = New-Object Collections.Generic.List[string]
     $lines.Add('# Generated focused test plan')
+    $lines.Add('<!-- albert-devcore:generated:v1 -->')
     $lines.Add('')
     $lines.Add("Generated: $(Get-Date -Format o)")
     $lines.Add('')
@@ -335,21 +458,25 @@ function Get-TestRecommendations {
 function Invoke-Update {
     param([string]$Path)
     $root = Resolve-RepositoryRoot $Path
-    Push-Location $root
+    Assert-GeneratedContextTargets $root
+    $revision = Get-RepositoryRevision $root
+    $contextEntrypoints = @(Get-ContextEntrypoints $root)
+    if ($DryRun) { Write-Host "[DRY RUN] Would refresh verified generated DevCore context: $root ($($revision.head))"; return }
+    Push-Location -LiteralPath $root
     try {
         Ensure-Directory (Join-Path $root '.ai\context')
         Add-IgnoreRules $root
-        $branch = (& git branch --show-current | Out-String).Trim()
-        $head = (& git rev-parse HEAD | Out-String).Trim()
-        $status = (& git status --short | Out-String).TrimEnd()
-        $diff = (& git -c core.safecrlf=false diff --stat | Out-String).TrimEnd()
-        $recent = (& git log -n 12 --pretty=format:'%h %ad %s' --date=short | Out-String).TrimEnd()
+        $branch = $revision.branch
+        $head = $revision.head
+        $status = (Invoke-DevCoreGit $root @('status','--short')).output
+        $diff = (Invoke-DevCoreGit $root @('-c','core.safecrlf=false','diff','--stat')).output
+        $recent = if ($revision.hasCommit) { (Invoke-DevCoreGit $root @('log','-n','12','--pretty=format:%h %ad %s','--date=short')).output } else { '(no commits yet)' }
         $changed = Get-ChangedFiles $root
         $exclude = @('.git','node_modules','dist','build','.next','.expo','coverage','.ai','ios','android')
-        $dirs = Get-ChildItem $root -Directory -Force | Where-Object { $exclude -notcontains $_.Name } | Sort-Object Name
-        $files = Get-ChildItem $root -File -Force | Where-Object { $_.Length -lt 200000 } | Sort-Object Name
+        $dirs = Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object { $exclude -notcontains $_.Name } | Sort-Object Name
+        $files = Get-ChildItem -LiteralPath $root -File -Force | Where-Object { $_.Length -lt 200000 } | Sort-Object Name
         $map = New-Object Collections.Generic.List[string]
-        $map.Add('# Generated repository map'); $map.Add('')
+        $map.Add('# Generated repository map'); $map.Add('<!-- albert-devcore:generated:v1 -->'); $map.Add('')
         $map.Add("Generated: $(Get-Date -Format o)"); $map.Add("Commit: $head"); $map.Add('')
         $map.Add('## Top-level directories')
         foreach ($dir in $dirs) { $map.Add("- $($dir.Name)/") }
@@ -360,9 +487,8 @@ function Invoke-Update {
         Write-Utf8NoBom (Join-Path $root '.ai\context\repo-map.generated.md') ($map -join "`r`n")
         New-ImportMap $root
         $null = Get-TestRecommendations $root $changed
-        $readOrder = @('AGENTS.md') + @(Get-ContextEntrypoints $root) + @(
-            '.ai/context/current-state.md',
-            '.ai/context/decisions.md',
+        $fallbackMemory = @('.ai/context/current-state.md','.ai/context/decisions.md') | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) -PathType Leaf }
+        $readOrder = @('AGENTS.md') + $contextEntrypoints + @($fallbackMemory) + @(
             '.ai/context/repo-map.generated.md',
             '.ai/context/import-map.generated.md',
             '.ai/context/test-plan.generated.md',
@@ -371,7 +497,7 @@ function Invoke-Update {
         )
         $readLines = New-Object Collections.Generic.List[string]
         for ($i = 0; $i -lt $readOrder.Count; $i++) { $readLines.Add("$($i + 1). $($readOrder[$i])") }
-        $ctx = "# Session context`r`n`r`nGenerated: $(Get-Date -Format o)`r`nBranch: $branch`r`nCommit: $head`r`n`r`n## Working tree`r`n$(if ($status) {$status} else {'clean'})`r`n`r`n## Diff summary`r`n$(if ($diff) {$diff} else {'none'})`r`n`r`n## Recent commits`r`n$recent`r`n`r`n## Read order`r`n$($readLines -join "`r`n")`r`n"
+        $ctx = "# Session context`r`n<!-- albert-devcore:generated:v1 -->`r`n`r`nGenerated: $(Get-Date -Format o)`r`nBranch: $branch`r`nCommit: $head`r`n`r`n## Working tree`r`n$(if ($status) {$status} else {'clean'})`r`n`r`n## Diff summary`r`n$(if ($diff) {$diff} else {'none'})`r`n`r`n## Recent commits`r`n$recent`r`n`r`n## Read order`r`n$($readLines -join "`r`n")`r`n"
         Write-Utf8NoBom (Join-Path $root '.ai\context\session-context.md') $ctx
         Write-Host "Updated DevCore context for $root"
     } finally { Pop-Location }
@@ -398,25 +524,46 @@ function Get-TaskTerms {
 }
 
 function Get-ContextEntrypoints {
-    param([string]$Root)
+    param([string]$Root,[switch]$RequireExisting)
 
     $entrypoints = @()
     foreach ($path in @('.ai\context\project-adapter.generated.json','.ados\adapter.json')) {
         $full = Join-Path $Root $path
+        Assert-DevCoreTargetPath $full
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
-        try {
-            $data = Get-Content -LiteralPath $full -Raw | ConvertFrom-Json
-            $propertyNames = @($data.PSObject.Properties | ForEach-Object { $_.Name })
-            if ($propertyNames -contains 'contextEntrypoints') { $entrypoints += @($data.contextEntrypoints) }
+        try { $data = Get-Content -LiteralPath $full -Raw | ConvertFrom-Json }
+        catch { throw "Invalid project memory adapter: $path. $($_.Exception.Message)" }
+        $propertyNames = @($data.PSObject.Properties | ForEach-Object { $_.Name })
+        if ($propertyNames -notcontains 'contextEntrypoints') { continue }
+        foreach ($entry in @($data.contextEntrypoints)) {
+            if ($entry -isnot [string] -or [string]::IsNullOrWhiteSpace($entry) -or [IO.Path]::IsPathRooted($entry) -or $entry -match '(^|[\\/])\.\.([\\/]|$)|:') {
+                throw "Invalid memory entrypoint in ${path}: entries must be relative project file paths without traversal or drive/UNC prefixes."
+            }
+            $normalized = $entry.Replace('/', '\')
+            $entryPath = [IO.Path]::GetFullPath((Join-Path $Root $normalized))
+            $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+            if (-not $entryPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Memory entrypoint escapes the project: $entry" }
+            Assert-DevCoreTargetPath $entryPath
+            if ($RequireExisting -and -not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
+                throw "Declared memory entrypoint is missing: $entry. Restore or correct the project adapter before adoption; no competing memory was created."
+            }
+            $entrypoints += $normalized
         }
-        catch { }
     }
-    $projectBrain = @(
+    $knownMemory = @(
         'docs/project-brain/README.md',
         'docs/project-brain/CURRENT_FOCUS.md',
-        'docs/project-brain/AGENT_ENTRYPOINTS.md'
+        'docs/project-brain/AGENT_ENTRYPOINTS.md',
+        'docs/project-brain/STATE.md',
+        'docs/project-brain/DECISIONS.md',
+        'docs/project-brain/ROADMAP.md',
+        'CONTEXT.md'
     )
-    if (Test-Path -LiteralPath (Join-Path $Root $projectBrain[0]) -PathType Leaf) { $entrypoints += $projectBrain }
+    foreach ($path in $knownMemory) {
+        $full = Join-Path $Root $path
+        Assert-DevCoreTargetPath $full
+        if (Test-Path -LiteralPath $full -PathType Leaf) { $entrypoints += $path }
+    }
     return @($entrypoints | Where-Object { $_ } | ForEach-Object { ([string]$_).Replace('/', '\') } | Sort-Object -Unique)
 }
 
@@ -431,7 +578,7 @@ function Find-TaskFiles {
     param([string]$Root,[string[]]$Terms)
 
     $results = New-Object Collections.Generic.List[string]
-    Push-Location $Root
+    Push-Location -LiteralPath $Root
     try {
         if (-not $env:ADOS_DISABLE_RG -and (Test-CommandAvailable 'rg')) {
             foreach ($term in $Terms) {
@@ -468,6 +615,7 @@ function Invoke-Packet {
     param([string]$Path,[string]$TaskText,[int]$Budget)
     if (-not $TaskText) { throw 'Task is required for packet.' }
     $root = Resolve-RepositoryRoot $Path
+    Assert-GeneratedContextTargets $root -IncludePacket
     Invoke-Update $root
     $route = Invoke-Route $TaskText
     $terms = Get-TaskTerms $TaskText
@@ -475,7 +623,7 @@ function Invoke-Packet {
     foreach ($match in (Find-TaskFiles $root $terms)) {
         if ($candidateFiles -notcontains $match) { $candidateFiles.Add($match) }
     }
-    Push-Location $root
+    Push-Location -LiteralPath $root
     try {
         foreach ($changed in (Get-ChangedFiles $root)) { if ($candidateFiles -notcontains $changed) { $candidateFiles.Insert(0,$changed) } }
         $entrypoints = @(Get-ContextEntrypoints $root)
@@ -490,8 +638,8 @@ function Invoke-Packet {
         $used = 0
         foreach ($item in ($baseFiles + $optionalBaseFiles + @($candidateFiles))) {
             $full = Join-Path $root $item
-            if (Test-Path $full -PathType Leaf) {
-                $size = (Get-Item $full).Length
+            if (Test-Path -LiteralPath $full -PathType Leaf) {
+                $size = (Get-Item -LiteralPath $full).Length
                 if ($selected -contains $item) { continue }
                 if ($optionalBaseFiles -contains $item -and $size -gt $maxOptionalBaseBytes) {
                     if ($skippedBaseFiles -notcontains $item) { $skippedBaseFiles.Add($item) }
@@ -514,7 +662,7 @@ function Invoke-Packet {
             }
         }
         $lines = New-Object Collections.Generic.List[string]
-        $lines.Add('# Generated prompt packet'); $lines.Add('')
+        $lines.Add('# Generated prompt packet'); $lines.Add('<!-- albert-devcore:generated:v1 -->'); $lines.Add('')
         $lines.Add("Generated: $(Get-Date -Format o)"); $lines.Add("Route: $route"); $lines.Add("Budget bytes: $Budget"); $lines.Add("Selected bytes: $used"); $lines.Add('')
         $lines.Add('## Task'); $lines.Add($TaskText); $lines.Add(''); $lines.Add('## Selected files')
         foreach ($item in $selected) { $lines.Add("- $item") }
@@ -534,13 +682,22 @@ function Invoke-Packet {
 }
 
 function Invoke-Register {
-    param([string]$Path)
+    param([string]$Path,[switch]$Preview)
     $root = Resolve-RepositoryRoot $Path
+    Assert-PrimaryCheckout $root
+    Assert-DevCoreTargetPath $RegistryPath
     $state = Read-RegistryState
     Write-RegistryWarnings $state
     $name = Split-Path $root -Leaf
-    $entries = @($state.entries | Where-Object { $_.path -ne $root })
-    $entries += [pscustomobject]@{ name=$name; path=$root; registered=(Get-Date -Format o) }
+    $key = $root.TrimEnd('\','/').Replace('/','\')
+    $match = @($state.entries | Where-Object { ([string]$_.path).Trim().TrimEnd('\','/').Replace('/','\') -eq $key })
+    if ($match.Count -gt 0 -and -not $state.needsRepair) { Write-Host "Already registered: $($match[0].name)"; return }
+    if ($DryRun -or $Preview) {
+        Write-Host "[DRY RUN] Would register/preserve $name in $RegistryPath$(if ($state.needsRepair) { ' (with a registry backup and normalization)' })"
+        return
+    }
+    $entries = @($state.entries)
+    if ($match.Count -eq 0) { $entries += [pscustomobject]@{ name=$name; path=$root; registered=(Get-Date -Format o) } }
     Write-NormalizedRegistry -Entries $entries -CreateBackup:$state.needsRepair
     Write-Host "Registered: $name"
 }
@@ -555,13 +712,32 @@ function Invoke-Projects {
 function Invoke-Adopt {
     param([string]$Path)
     $root = Resolve-RepositoryRoot $Path
+    Assert-PrimaryCheckout $root
+    Assert-GeneratedContextTargets $root
+    $revision = Get-RepositoryRevision $root
     $template = Join-Path $DevCoreRoot 'template'
-    Copy-IfMissing (Join-Path $template 'AGENTS.md') (Join-Path $root 'AGENTS.md')
-    Copy-IfMissing (Join-Path $template '.ai\context\current-state.md') (Join-Path $root '.ai\context\current-state.md')
-    Copy-IfMissing (Join-Path $template '.ai\context\decisions.md') (Join-Path $root '.ai\context\decisions.md')
-    Copy-IfMissing (Join-Path $template '.ai\context\ADR-TEMPLATE.md') (Join-Path $root '.ai\context\ADR-TEMPLATE.md')
-    Copy-IfMissing (Join-Path $template '.ai\LOCAL_MODEL_POLICY.md') (Join-Path $root '.ai\LOCAL_MODEL_POLICY.md')
-    Copy-IfMissing (Join-Path $template 'scripts\ai-local-task.ps1') (Join-Path $root 'scripts\ai-local-task.ps1')
+    $templatePaths = @('AGENTS.md','.ai/LOCAL_MODEL_POLICY.md','scripts/ai-local-task.ps1')
+    $memoryEntrypoints = @(Get-ContextEntrypoints $root -RequireExisting)
+    if ($memoryEntrypoints.Count -eq 0) {
+        $templatePaths += @('.ai/context/current-state.md','.ai/context/decisions.md','.ai/context/ADR-TEMPLATE.md')
+    }
+    else { Write-Host "Preserved canonical project memory: $($memoryEntrypoints -join ', ')" }
+    foreach ($relative in $templatePaths) {
+        $source = Join-Path $template $relative
+        $target = Join-Path $root $relative
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Adoption template is missing: $source" }
+        Assert-DevCoreTargetPath $target
+        if (-not (Test-Path -LiteralPath $target) -and (Test-TrackedDevCorePath $root $relative)) {
+            throw "Refusing to restore a deleted project file during adoption: $relative"
+        }
+    }
+    # The complete project and registry preflight runs before the first write.
+    Invoke-Register $root -Preview
+    if ($DryRun) {
+        Write-Host "[DRY RUN] Verified adoption plan for $root ($($revision.head)); no files, registry or Git excludes were changed."
+        return
+    }
+    foreach ($relative in $templatePaths) { Copy-IfMissing (Join-Path $template $relative) (Join-Path $root $relative) }
     Add-IgnoreRules $root
     Invoke-Register $root
     Invoke-Update $root
@@ -572,7 +748,7 @@ function Invoke-Local {
     if (-not $TaskText) { throw 'Task is required for local.' }
     $root = Resolve-RepositoryRoot $Path
     $runner = Join-Path $root 'scripts\ai-local-task.ps1'
-    if (-not (Test-Path $runner)) { throw 'Local runner is missing.' }
+    if (-not (Test-Path -LiteralPath $runner)) { throw 'Local runner is missing.' }
     & $runner -Task $TaskText -Files $SelectedFiles -Model $LocalModel
 }
 

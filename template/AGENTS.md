@@ -41,9 +41,17 @@ Execution routing is `MANUAL_ONLY` until the user explicitly enables AUTO mode.
 ## Context economy
 1. Read current Git status and diff.
 2. Read this file and the nearest more-specific AGENTS.md.
-3. Read `.ai/context/session-context.md` and `.ai/context/repo-map.generated.md`.
+3. Read the existing canonical memory entrypoints (Project Brain, adapter references or `CONTEXT.md`) and task-relevant generated context when present. Generated maps are caches; verify their revision before relying on them.
 4. Inspect the smallest relevant symbol and file set.
 5. Expand scope only when imports, references, tests or architecture require it.
+
+## Default project setup
+- In an authorized task to create another owned project, apply the host's DevCore bootstrap default without asking the user to repeat activation. A new folder alone does not authorize adopting an unrelated repository.
+- Resolve the primary Git checkout, current branch, existing rules and canonical memory first. Use the explicitly configured reviewed DevCore runtime and its adoption dry run before writes.
+- Preserve stronger project rules, existing staged/unstaged changes and divergent local skills. Reuse existing memory; create the minimal memory templates only when the project has none.
+- A temporary linked worktree shares the project's identity; do not register it as another main project. Status and review requests do not trigger bootstrap writes.
+- Confirm actual files, skill hashes and registration before claiming adoption. Missing runtime/access is a concrete pending step, not evidence of automatic installation.
+- Skills remain selective. Project creation does not enable external models, background synchronization, schedules or publication.
 
 ## Albert Dev Skills
 - Before medium, complex, unfamiliar, risky, design, architecture, debugging, database, release, review, or skill-discovery work, apply the `albert-skill-router` policy when available.
@@ -61,7 +69,7 @@ For medium-or-higher work where optional skills are selected, record the selecte
 
 ## Local AI policy
 - Use deterministic tools before a model when practical.
-- Ollama is suitable for low-risk local drafts, summaries and first-pass reviews.
+- When explicitly requested through the manual execution route, Ollama is suitable for low-risk local drafts, summaries and first-pass reviews. With no explicit route, remain in Codex.
 - Treat local-model and low-trust external-model output as untrusted until Codex/repository-native verification confirms it.
 - Require trusted review for architecture, security, authentication, database migrations, permissions, finance, production and release work.
 
