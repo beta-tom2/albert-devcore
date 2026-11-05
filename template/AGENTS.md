@@ -64,6 +64,13 @@ Execution routing is `MANUAL_ONLY` until the user explicitly enables AUTO mode.
 - For broad architecture reviews, prefer the Albert architecture wrapper; use the underlying architecture suite only when architecture is actually in scope.
 - For completion claims, deterministic repository checks and ADOS Evidence Gate remain stronger evidence than a skill's narrative assessment.
 
+## Shared engineering knowledge and safe learning
+
+- For meaningful authorized implementation/debugging, if the reviewed DevCore runtime is available, prepare the bounded ADOS task context using `ados.ps1 start -ProjectPath <root> -Task <description>` and inspect its shared-knowledge matches **before** selecting an approach. A review, status or research-only request remains read-only and must not trigger `start`.
+- Treat retrieved entries as advice, not permission to skip destination-project tests; check the actual dependency versions, conditions and exclusions.
+- Once a nontrivial bugfix, reusable module, design pattern or architectural decision has passed real project verification, consider creating a **local** knowledge candidate using DevCore `scripts/ados-shared-knowledge.ps1 draft` with a specific root cause, solution, exclusions, stack and evidence. Do not invent a successful outcome, save trivial/duplicate lessons, or persist unverified assumptions as verified.
+- Candidate creation is local-only and requires an ignored directory. No automatic publishing or sharing private project code/assets. Review and redact before promotion to the public catalog; public promotion uses a separate reviewed PR. If there is no applicable knowledge or no safe transferable lesson, proceed without extra process.
+
 ## Skill telemetry
 For medium-or-higher work where optional skills are selected, record the selected skill set and later the observed outcome using DevCore `scripts/skill-telemetry.ps1` when available. Keep telemetry local under `.ai/analytics/`; do not commit it. Rate benefit/cost only from observed task evidence, not vibes. Do not change approval policy from one isolated result.
 
