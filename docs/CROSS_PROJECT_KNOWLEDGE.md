@@ -4,7 +4,7 @@
 
 Extend existing **Project Brain, Repair Memory, Negative Memory, Fix DNA, Skill Router, and Evidence Gate** rather than inventing a second project-memory system. Project-specific knowledge stays in its original repository. This new layer contains only *sanitized, reusable, reviewed* knowledge.
 
-This is **not** automatic model training, autonomous code publication, a vector database, or a new service. Initial matching is deterministic, read-only, lexical, and capped at three records per task.
+This is **not** automatic model training, autonomous code publication, a vector database, or a new service. The first reviewed entries are generalized from merged, publicly verifiable DevCore PR #12 and passed Windows CI; they are not assumed applicable to other projects without new tests. Initial matching is deterministic, read-only, lexical, and capped at three records per task.
 
 ## Trust and lifecycle
 
