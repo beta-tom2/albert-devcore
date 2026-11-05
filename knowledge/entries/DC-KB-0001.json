@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "DC-KB-0001",
+  "kind": "anti-pattern",
+  "status": "verified",
+  "title": "Reject stale task evidence when completing a leased agent queue item",
+  "problem": "A queue item can otherwise be marked complete using success evidence from another attempt, old branch revision or expired lease.",
+  "resolution": "Bind queue completion to the exact live task and lease attempt, verify current branch/HEAD and evidence provenance, reject stale or unknown claims, and keep corrupt queue state for recovery rather than silently replacing it.",
+  "applicability": "Agent queues with retries, leased dispatch, checkpoints or PR verification; compare against the implementation-specific current revision and task identity.",
+  "doNotUseWhen": "No queue or lease exists, or an existing project rule defines a stronger task identity and evidence contract.",
+  "stacks": [],
+  "tags": [
+    "queue",
+    "lease",
+    "evidence",
+    "stale",
+    "agent",
+    "checkpoint"
+  ],
+  "lastVerified": "2026-11-04",
+  "expiresOn": null,
+  "evidence": [
+    {
+      "kind": "public-ci",
+      "reference": "https://github.com/beta-tom2/albert-devcore/actions/runs/41901254002",
+      "status": "passed"
+    },
+    {
+      "kind": "reviewed-change",
+      "reference": "https://github.com/beta-tom2/albert-devcore/pull/12",
+      "status": "passed"
+    }
+  ]
+}
