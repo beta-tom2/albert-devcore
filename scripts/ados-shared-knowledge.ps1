@@ -85,6 +85,9 @@ function Assert-KbRecord($Record, [bool]$AllowCandidate) {
         if (-not (Test-KbDate ([string]$Record.lastVerified))) {
             throw 'Verified knowledge must have a valid lastVerified date.'
         }
+        if ([string]$Record.lastVerified -gt (Get-Date -Format 'yyyy-MM-dd')) {
+            throw 'Verification cannot be dated in the future.'
+        }
         if (@($Record.evidence).Count -lt 1) { throw 'Verified knowledge requires evidence.' }
         foreach ($proof in @($Record.evidence)) {
             if ([string]$proof.status -ne 'passed' -or [string]::IsNullOrWhiteSpace([string]$proof.reference)) {
@@ -126,7 +129,13 @@ function Invoke-KbSearch {
     $terms = @(Get-KbTerms $Task)
     $requestedStacks = @($Stack | ForEach-Object { ([string]$_).ToLowerInvariant().Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
+    if ($requestedStacks.Count -eq 0) {
+        $knownStacks = @('expo','react-native','supabase','unity','godot','flutter','python','powershell','nextjs','swift','kotlin')
+        $requestedStacks = @($knownStacks | Where-Object { $terms -contains $_ })
+    }
     $matches = @()
+    $seenIds = @{}
+    $duplicateIds = @{}
     if (Test-Path -LiteralPath $KnowledgeRoot -PathType Container) {
         foreach ($file in @(Get-ChildItem -LiteralPath $KnowledgeRoot -File -Filter '*.json' | Sort-Object Name)) {
             try {
@@ -137,6 +146,12 @@ function Invoke-KbSearch {
                 Write-Warning ("Skipping invalid reviewed entry {0}: {1}" -f $file.Name,$_.Exception.Message)
                 continue
             }
+            $identifier = [string]$record.id
+            if ($seenIds.ContainsKey($identifier)) {
+                $duplicateIds[$identifier] = $true
+                continue
+            }
+            $seenIds[$identifier] = $true
             if ($record.expiresOn -and [string]$record.expiresOn -lt (Get-Date -Format 'yyyy-MM-dd')) {
                 continue
             }
@@ -148,6 +163,10 @@ function Invoke-KbSearch {
             $score = Get-KbScore $record $terms
             if ($score -gt 0) { $matches += [pscustomobject]@{ score=$score; entry=$record } }
         }
+    }
+    if ($duplicateIds.Count -gt 0) {
+        Write-Warning 'Duplicate reviewed knowledge IDs detected; conflicting entries are suppressed.'
+        $matches = @($matches | Where-Object { -not $duplicateIds.ContainsKey([string]$_.entry.id) })
     }
     $chosen = @($matches | Sort-Object @{Expression='score';Descending=$true},
         @{Expression={ [string]$_.entry.id };Descending=$false} | Select-Object -First $Limit)
@@ -182,6 +201,22 @@ function Invoke-KbSearch {
     Write-Host ("Shared knowledge: {0} reviewed match(es), {1}" -f $chosen.Count,$out)
 }
 
+function Assert-KbPrivateStorage([string]$Project) {
+    $gitRoot = (& git -C $Project rev-parse --show-toplevel 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $gitRoot) {
+        throw 'Knowledge drafts require an owned Git repository with an ignored local-output directory.'
+    }
+    $canonical = [IO.Path]::GetFullPath($Project).TrimEnd('\','/')
+    $gitCanonical = [IO.Path]::GetFullPath($gitRoot).TrimEnd('\','/')
+    if (-not [string]::Equals($canonical,$gitCanonical,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Use the primary repository root for knowledge drafts.'
+    }
+    & git -C $Project check-ignore -q -- '.ai/local-output/knowledge-candidates/probe.json'
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Knowledge draft directory is not Git-ignored. Adopt DevCore or explicitly ignore .ai/local-output/ before drafting.'
+    }
+}
+
 function Invoke-KbDraft {
     foreach ($field in @('Title','Problem','Resolution','Applicability','DoNotUseWhen','Evidence')) {
         if ([string]::IsNullOrWhiteSpace([string](Get-Variable -Name $field -ValueOnly))) {
@@ -189,6 +224,7 @@ function Invoke-KbDraft {
         }
     }
     $project = (Resolve-Path -LiteralPath $ProjectPath).Path
+    Assert-KbPrivateStorage $project
     $hash = [Security.Cryptography.SHA256]::Create()
     try {
         $bytes = $encoding.GetBytes(($Title.Trim() + '|' + $Problem.Trim()).ToLowerInvariant())
