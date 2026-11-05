@@ -116,6 +116,17 @@ try {
     } catch { $threw = $true }
     Assert-True $threw 'a verified entry without passed evidence must fail validation'
 
+    $publishedRoot = Join-Path $RepoRoot 'knowledge\entries'
+    $published = @(Get-ChildItem -LiteralPath $publishedRoot -File -Filter '*.json')
+    Assert-True ($published.Count -ge 2) 'published catalog should contain only reviewed real examples'
+    foreach ($entry in $published) {
+        & $Tool validate -RecordPath $entry.FullName
+    }
+    & $Tool search -ProjectPath $Project -KnowledgeRoot $publishedRoot -Task 'queue lease stale evidence' -Limit 3
+    $publishedReport = Get-Content -LiteralPath $resultFile -Raw
+    Assert-True ($publishedReport -match 'DC-KB-0001') 'real merged PR #12 knowledge should be discoverable'
+    Assert-True ($publishedReport -notmatch 'DC-KB-0002') 'unrelated installation recipe should not match a queue task'
+
     Write-Host ("Shared knowledge tests: {0} assertions PASS" -f $Failures)
 }
 finally {
