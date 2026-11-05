@@ -82,6 +82,7 @@ $Dispatcher = Join-Path $Root 'scripts\ados-dispatch.ps1'
 $ProjectState = Join-Path $Root 'scripts\ados-state.ps1'
 $StatePublisher = Join-Path $Root 'scripts\ados-state-publish.ps1'
 $RuntimeStatus = Join-Path $Root 'scripts\ados-status.ps1'
+$SharedKnowledge = Join-Path $Root 'scripts\ados-shared-knowledge.ps1'
 
 function Require-File {
     param([string]$Path)
@@ -116,6 +117,7 @@ function Ensure-LocalExclude {
         '.ai/context/import-map.generated.md',
         '.ai/context/test-plan.generated.md',
         '.ai/context/prompt-packet.generated.md',
+        '.ai/context/shared-knowledge.generated.md',
         '.ai/context/similar-repairs.generated.md',
         '.ai/context/handoff.generated.md',
         '.ai/context/fix-dna.generated.json',
@@ -163,6 +165,7 @@ function Invoke-Doctor {
     Require-File $ProjectState
     Require-File $StatePublisher
     Require-File $RuntimeStatus
+    Require-File $SharedKnowledge
     & $DevCore doctor
     Write-Host ''
     Write-Host 'ADOS components:'
@@ -179,6 +182,7 @@ function Invoke-Doctor {
     Write-Host ('{0,-28} PASS' -f 'portable project state')
     Write-Host ('{0,-28} PASS' -f 'project state publication')
     Write-Host ('{0,-28} PASS' -f 'runtime and skills status')
+    Write-Host ('{0,-28} PASS' -f 'reviewed cross-project knowledge')
 }
 
 function Get-ElasticBudget {
@@ -193,6 +197,28 @@ function Get-ElasticBudget {
     return $Fallback
 }
 
+function Invoke-SharedKnowledge {
+    param([string]$Repo,[string]$TaskText)
+    if (-not $TaskText) { return }
+    Require-File $SharedKnowledge
+    & $SharedKnowledge search -ProjectPath $Repo -Task $TaskText -Limit 3
+}
+
+function Add-SharedKnowledgeToPacket {
+    param([string]$Repo)
+    $knowledge = Join-Path $Repo '.ai\context\shared-knowledge.generated.md'
+    $packet = Join-Path $Repo '.ai\context\prompt-packet.generated.md'
+    if (-not (Test-Path -LiteralPath $knowledge -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $packet -PathType Leaf)) { return }
+    $content = [IO.File]::ReadAllText($knowledge, [Text.Encoding]::UTF8)
+    if ($content.Length -gt 3200) {
+        $content = $content.Substring(0,3200) + [Environment]::NewLine + '(truncated to keep context bounded)'
+    }
+    $addition = [Environment]::NewLine + [Environment]::NewLine +
+        '## Reviewed cross-project knowledge (advisory)' + [Environment]::NewLine + $content
+    [IO.File]::AppendAllText($packet,$addition,(New-Object Text.UTF8Encoding($false)))
+}
+
 function Invoke-Analyze {
     param([string]$Repo,[string]$TaskText)
     Ensure-LocalExclude $Repo
@@ -204,8 +230,10 @@ function Invoke-Analyze {
     if ($TaskText) {
         & $Memory search -ProjectPath $Repo -Query $TaskText -MaxCommits $MaxCommits
         & $MemoryV3 all -ProjectPath $Repo -Task $TaskText
+        Invoke-SharedKnowledge $Repo $TaskText
         $elasticBudget = Get-ElasticBudget $Repo $ContextBudgetBytes
         & $DevCore packet -ProjectPath $Repo -Task $TaskText -ContextBudgetBytes $elasticBudget
+    Add-SharedKnowledgeToPacket $Repo
     }
     Write-Host "ADOS analysis completed for $Repo"
 }
@@ -225,9 +253,11 @@ function Invoke-Start {
     & $Insights graph -ProjectPath $Repo -MaxFiles $MaxFiles
     & $Index all -ProjectPath $Repo -Task $TaskText -ContextTier $ContextTier -MaxFiles $MaxFiles
     & $MemoryV3 all -ProjectPath $Repo -Task $TaskText
+    Invoke-SharedKnowledge $Repo $TaskText
     & $Insights fixdna -ProjectPath $Repo -Task $TaskText
     $elasticBudget = Get-ElasticBudget $Repo $ContextBudgetBytes
     & $DevCore packet -ProjectPath $Repo -Task $TaskText -ContextBudgetBytes $elasticBudget
+    Add-SharedKnowledgeToPacket $Repo
     & $Memory handoff -ProjectPath $Repo
 
     $packet = Join-Path $Repo '.ai\context\prompt-packet.generated.md'
@@ -241,6 +271,7 @@ function Invoke-Start {
     Write-Host "  Prompt packet: $packet"
     Write-Host "  Fix DNA: $dna"
     Write-Host "  Similar repairs: $similar"
+    Write-Host "  Reviewed shared knowledge: $(Join-Path $Repo '.ai\context\shared-knowledge.generated.md')"
     Write-Host "  Handoff: $handoff"
     Write-Host "  Elastic context: $(Join-Path $Repo '.ai\context\elastic-context.generated.md')"
     Write-Host "  Checkpoint: $(Join-Path $Repo '.ai\checkpoints\current.json')"
