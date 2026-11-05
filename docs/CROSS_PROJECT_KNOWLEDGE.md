@@ -59,14 +59,14 @@ From the checked-out DevCore repository, in Windows PowerShell 5.1:
 
 Search also runs automatically during ADOS task preparation, **provided that task preparation runs through the reviewed DevCore runtime**. It is not a background watcher and does not automatically affect unrelated repositories or ChatGPT conversations.
 
-A candidate is written **only locally** and is not searchable by other projects. Once a vetted entry is merged to DevCore and the runtime is updated, it becomes available to other adopted projects. Global project adoption from PR #14 remains separate and must finish its own review/merge.
+A candidate is written **only locally** and is not searchable by other projects. The draft command requires the project Git root and checks that .ai/local-output/ is ignored; if not, it refuses to write. Once a vetted entry is merged to DevCore and the runtime is updated, it becomes available to other adopted projects. Global project adoption from PR #14 remains separate and must finish its own review/merge.
 
 ## Context budget and applicability
 
 - At most 3 reviewed entries are retrieved by default (configurable 1–5).
 - The summary is bounded, with concise problem, resolution, applicability, exclusion and evidence.
-- Explicit -Stack filters out records for incompatible stated stacks. Without a supplied stack, technical compatibility must be checked by the user/agent before reuse.
-- Scoring uses task terms in title, tags, problem and applicability; it is only a navigation heuristic, not semantic proof.
+- Explicit -Stack filters out records for incompatible stated stacks. If none is passed, a small allowlist of technology tokens may be inferred from the task; generic queries still require the agent to check compatibility before reuse.
+- Scoring uses task terms in title, tags, problem and applicability; it is only a navigation heuristic, not semantic proof. Conflicting duplicate reviewed IDs are suppressed rather than randomly preferred.
 - No personal or sensitive source documents, full histories, or third-party provider calls are read or transmitted.
 - No new dependency, paid API, scheduled service, vector store, or installation is required.
 
