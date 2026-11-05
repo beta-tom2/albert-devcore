@@ -127,6 +127,24 @@ try {
     Assert-True ($publishedReport -match 'DC-KB-0001') 'real merged PR #12 knowledge should be discoverable'
     Assert-True ($publishedReport -notmatch 'DC-KB-0002') 'unrelated installation recipe should not match a queue task'
 
+    # Prove isolation and reuse across two distinct owned repository roots.
+    $ProjectB = Join-Path $Fixture 'second-independent-project'
+    New-Item -ItemType Directory -Path $ProjectB -Force | Out-Null
+    Push-Location $ProjectB
+    try { & git init -q }
+    finally { Pop-Location }
+    $beforeCatalog = @(Get-ChildItem -LiteralPath $publishedRoot -File -Filter '*.json' |
+        Get-FileHash -Algorithm SHA256 | ForEach-Object { $_.Hash })
+    & $Tool search -ProjectPath $ProjectB -KnowledgeRoot $publishedRoot -Task 'queue lease stale evidence' -Limit 3
+    $bKnowledge = Join-Path $ProjectB '.ai\context\shared-knowledge.generated.md'
+    $bReport = Get-Content -LiteralPath $bKnowledge -Raw
+    Assert-True ($bReport -match 'DC-KB-0001') 'another independently rooted project must reuse the same reviewed case'
+    Assert-True ($bReport -eq $publishedReport) 'matching queries across distinct projects must produce deterministic knowledge content'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $ProjectB '.ai\local-output\knowledge-candidates'))) 'private drafts must not be copied to a second project'
+    Assert-True (@(Get-ChildItem -LiteralPath $publishedRoot -File -Filter '*.json' |
+        Get-FileHash -Algorithm SHA256 | ForEach-Object { $_.Hash }) -join ',' -eq ($beforeCatalog -join ',')) 'cross-project search must not mutate the shared catalog'
+    Assert-True ($bReport -notmatch 'DC-CAND-') 'local-only candidate IDs must never enter a second project'
+
     Write-Host ("Shared knowledge tests: {0} assertions PASS" -f $Failures)
 }
 finally {

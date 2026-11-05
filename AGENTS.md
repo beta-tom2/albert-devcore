@@ -65,6 +65,12 @@ For Albert-owned projects, an authorized new-project creation task includes DevC
 - Verify resulting rules, memory entrypoints, installed hashes and a single registration. If the runtime or filesystem access is missing, report adoption as pending rather than installed.
 - This is an agent step during project creation, not a filesystem watcher. It does not enable provider routing, synchronization, publication or schedules.
 
+## Reviewed cross-project learning loop
+
+For meaningful implementation or debugging in an owned project, use the available reviewed ADOS runtime to prepare task context (normally `ados.ps1 start`) before changing code. Read only the bounded shared-knowledge matches relevant to the task; inspect their applicability, negative conditions, versions and evidence. Do not use task preparation for a status-only or other read-only request because `start` creates a checkpoint.
+
+After a **demonstrably verified** nontrivial fix, reusable component, design pattern or architecture decision, evaluate whether it generalizes. If it does, use `scripts/ados-shared-knowledge.ps1 draft` to create a **local, unverified** candidate with its specific root cause, tested approach, exclusions, applicable stack and real evidence. Keep it in the project's ignored `.ai/local-output/` directory. Skip trivial or duplicate lessons, incomplete verification and unreviewed secrets or proprietary material. Never promote to the public catalog, copy private assets, or claim an agent has permanently learned without an explicit reviewed promotion. See `docs/CROSS_PROJECT_KNOWLEDGE.md`.
+
 ## Changes to DevCore
 
 Keep Windows PowerShell 5.1 compatibility. Preserve the local-first trust boundary and MANUAL external-routing policy unless the user explicitly authorizes a change. Run deterministic smoke tests when changing ADOS or DevCore behavior and do not claim verification without observed evidence.
