@@ -50,6 +50,9 @@ try {
     Assert-True ($report -notmatch 'DC-KB-0002') 'incompatible stack must not be retrieved'
     Assert-True ($report -notmatch 'DC-KB-0003') 'expired solution must not be retrieved'
     Assert-True ($report -notmatch 'DC-KB-0004') 'candidate must not be retrieved'
+    & $Tool search -ProjectPath $Project -KnowledgeRoot $Library -Task 'Expo navigation auth restore' -Limit 3
+    $inferred = Get-Content -LiteralPath $resultFile -Raw
+    Assert-True ($inferred -notmatch 'DC-KB-0002') 'explicit technology in task must infer a safe stack filter'
     Assert-True ($report.Length -lt 3200) 'retrieved context must remain bounded'
     Assert-True ((Get-FileHash -LiteralPath (Join-Path $Library '01-expo.json') -Algorithm SHA256).Hash -eq $digestBefore) 'search must not mutate reviewed catalog'
 
@@ -57,6 +60,12 @@ try {
     $report = Get-Content -LiteralPath $resultFile -Raw
     Assert-True ($report -match 'DC-KB-0002') 'other stack match must be retrieved on request'
     Assert-True ($report -notmatch 'DC-KB-0001') 'limit and stack must be respected'
+
+    Write-JsonFile (Join-Path $Library '05-duplicate.json') (Make-Entry 'DC-KB-0001' 'Conflicting navigation repair' 'expo' $null)
+    & $Tool search -ProjectPath $Project -KnowledgeRoot $Library -Task 'Expo navigation auth restore' -Stack expo
+    $duplicateReport = Get-Content -LiteralPath $resultFile -Raw
+    Assert-True ($duplicateReport -notmatch 'DC-KB-0001') 'conflicting duplicate IDs must not be recommended'
+    Remove-Item -LiteralPath (Join-Path $Library '05-duplicate.json') -Force
 
     & $Tool search -ProjectPath $Project -KnowledgeRoot $Library -Task 'unrelated zygomorphic engine' -Limit 3
     $report = Get-Content -LiteralPath $resultFile -Raw
@@ -70,6 +79,13 @@ try {
         Evidence='Reproduction, local regression test and a human reviewer are needed'
         Stack=@('expo')
     }
+    Push-Location $Project
+    try { & git init -q }
+    finally { Pop-Location }
+    $threw = $false
+    try { & $Tool draft @draftArgs } catch { $threw = $true }
+    Assert-True $threw 'a draft without Git ignore protection must be blocked'
+    [IO.File]::WriteAllText((Join-Path $Project '.gitignore'),'.ai/' + [Environment]::NewLine,$encoding)
     & $Tool draft @draftArgs
     $drafts = @(Get-ChildItem -LiteralPath (Join-Path $Project '.ai\local-output\knowledge-candidates') -Filter '*.json')
     Assert-True ($drafts.Count -eq 1) 'draft must create exactly one local candidate'
