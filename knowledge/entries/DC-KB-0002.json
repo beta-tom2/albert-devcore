@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "DC-KB-0002",
+  "kind": "solution",
+  "status": "verified",
+  "title": "Install owned agent skills only from approved hash-locked artifacts with rollback",
+  "problem": "An unpinned skill installer may bypass approval rules or replace files with mutable downloads; a failed upgrade can leave a partial or unsafe installation.",
+  "resolution": "Separate the approval policy from exact artifact hashes. Stage reviewed local packages, verify source and installed digests, preserve a complete backup, replace only absent destinations and test a rollback against conflicts and partial failure.",
+  "applicability": "Updating repository-owned skills from vetted local artifacts under a Windows PowerShell development workflow, with explicit approval for the exact package.",
+  "doNotUseWhen": "Packages come from unaudited external sources or a different manager owns the destination; do not assume this implements a generic dependency manager.",
+  "stacks": [
+    "powershell"
+  ],
+  "tags": [
+    "skills",
+    "installer",
+    "rollback",
+    "hash",
+    "approval",
+    "provenance"
+  ],
+  "lastVerified": "2026-11-04",
+  "expiresOn": null,
+  "evidence": [
+    {
+      "kind": "public-ci",
+      "reference": "https://github.com/beta-tom2/albert-devcore/actions/runs/41901254002",
+      "status": "passed"
+    },
+    {
+      "kind": "reviewed-change",
+      "reference": "https://github.com/beta-tom2/albert-devcore/pull/12",
+      "status": "passed"
+    }
+  ]
+}
