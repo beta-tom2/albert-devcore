@@ -249,7 +249,12 @@ function Invoke-KbDraft {
         throw 'A draft with this problem already exists. Review it rather than overwrite.'
     }
     $json = $candidate | ConvertTo-Json -Depth 8
-    [IO.File]::WriteAllText($out,$json,$encoding)
+    $stream = [IO.File]::Open($out,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try {
+        $bytes = $encoding.GetBytes($json)
+        $stream.Write($bytes,0,$bytes.Length)
+    }
+    finally { $stream.Dispose() }
     Write-Host "Local unverified draft created: $out"
     Write-Host 'Nothing was promoted, committed, uploaded, or published.'
 }
