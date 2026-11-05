@@ -151,6 +151,8 @@ try { $statusAfterStart = (& git status --porcelain=v1 | Out-String).TrimEnd() }
 finally { Pop-Location }
 Assert-True ($statusBeforeStart -eq $statusAfterStart) 'ADOS start must keep generated context out of product Git status'
 $packet = Get-Content -LiteralPath (Join-Path $ResolvedFixture '.ai\context\prompt-packet.generated.md') -Raw
+Assert-True ($packet -match 'Reviewed cross-project knowledge') 'ADOS task packet must contain bounded shared-knowledge advice'
+Assert-True (Test-Path -LiteralPath (Join-Path $ResolvedFixture '.ai\context\shared-knowledge.generated.md')) 'ADOS start must generate reviewed knowledge context'
 Assert-True ($packet -match 'docs\\project-brain\\README.md') 'prompt packet must include the Project Brain entrypoint'
 Assert-True ($packet -match 'README.md \(over .* optional-base cap\)') 'prompt packet must report the oversized root README instead of selecting it'
 $packetSelectedBlock = (($packet -split '## Selected files',2)[1] -split '## Skipped duplicate files',2)[0]
@@ -357,4 +359,5 @@ try { & $Scheduler uninstall -ProjectPath $ResolvedFixture -DailyAt '03:15' -Max
 catch { $uninstallBlocked = [string]$_.Exception.Message -match 'Uninstall blocked' }
 Assert-True $uninstallBlocked 'scheduler uninstall must require explicit confirmation before system access'
 
+& (Join-Path $RepoRoot 'tests\ados-shared-knowledge.ps1')
 Write-Host 'ADOS v0.4 smoke test: PASS'
