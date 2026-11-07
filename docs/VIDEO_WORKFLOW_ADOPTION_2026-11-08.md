@@ -20,8 +20,8 @@ It is **not** a claim that all devices/skills/runtimes have been audited.
 1. Embed **Rule #1** (two risk-scaled preflight passes, final diff/evidence gate) in
    DevCore's root and new-project/global policy templates. This changes repository
    guidance, **not** an already installed global file on the user's offline laptop.
-2. Use the lean game profile for RIFTGRID I7/I8. Preserve gameplay architecture,
-   current branch and tested deterministic behavior.
+2. Use the lean game profile for an authorized game project at its current stage.
+   Keep its private roadmap in that project's repository; preserve tested behavior.
 3. Trial the visual quality protocol on **one** interface. Do not treat optional
    detector output as a substitute for rendering, device testing or visual review.
 4. Extend current local skill telemetry only if objective metrics can be recorded
