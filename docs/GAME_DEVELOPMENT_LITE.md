@@ -45,22 +45,22 @@ of good controls or performance, and a passing unit test is not proof of a usabl
 For a task, select **one or two** of these perspectives unless its scope clearly needs more.
 Do not pay for multiple models or spawn agents merely to enact the headings.
 
-## RIFTGRID P0 application
+## Applying to a small Godot P0 prototype
 
-Canonical project state is `riftgrid/docs/project-brain/STATE.md`, with the actual source
-revision. As observed on 2026-11-08, I0–I6 are recorded complete and I7 (mobile feel) / I8
-(external game-loop evidence) remain open. This is a source snapshot, not proof of a tested
-device build or proof that the user's offline laptop is synchronized.
+Use the game's **private** canonical state and actual source revision. A public
+shared toolkit must never publish private roadmap, code, unreleased mechanics,
+player logs or source assets merely to illustrate this workflow.
 
-- **I7:** prioritize portrait layout and touch geometry first, then restrained feedback/audio/
-  haptics, device performance and Android debug export. Run existing `tools/verify.ps1`,
-  renderer interaction smoke and real Android checks. For visual changes preserve review
-  screenshots under an ignored local artifacts path; do not commit private device artifacts.
-- **I8:** run 5–10 external 10–15 minute playtests. Track changed decisions due to intent,
-  failure clarity, player restart choice and major difficulty problems. Keep raw metrics local
-  unless authorized for publication.
-- **Stop rule:** if enemy intent rarely changes placement decisions or testers do not want
-  another run, improve the core interaction before P1 content, economy or monetization.
+- **Mobile feel:** prioritize portrait layout, usable touch targets, readable
+  intent and compact reward states; then only necessary feedback/audio/haptics,
+  device performance and a debug export. Use existing native tests plus a real
+  renderer/phone acceptance pass.
+- **External playtests:** after a reproducible playable run exists, have a small
+  number of players test decision clarity, failure explanation, pacing and
+  whether they voluntarily replay. Keep raw metrics private.
+- **Stop rule:** when a core game mechanic fails to alter player decisions or
+  produces no replay interest, revisit the interaction before adding content
+  or monetization.
 
-No RIFTGRID product changes are implied by this profile. Any actual implementation must
-pass the project's own revision-scoped checks and its existing decisions.
+No product changes are implied by this public profile. Game-specific acceptance
+and implementation history belong inside the authorized **private game repo**.
