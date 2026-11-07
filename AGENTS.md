@@ -2,6 +2,33 @@
 
 Albert DevCore is the shared development-control plane for current and future Albert projects. ADOS, Project Brain/repository context, AGENTS rules, and Albert Dev Skills are complementary layers, not competing frameworks.
 
+## Rule #1: double preflight, then evidence
+
+For every nontrivial implementation, change to shared policy, release, dependency,
+security-sensitive area, or user-visible design, **review the approach twice before
+editing**. A review/status request stays read-only.
+
+1. **Goal and baseline pass:** identify the real user outcome, current repo/worktree,
+   branch/revision, project rules, existing implementation and smallest reversible
+   option. Verify important assumptions against current sources; do not rely on
+   remembered or generated status alone.
+2. **Independent risk pass:** challenge the chosen approach for regressions, hidden
+   coupling, privacy/security issues, excessive complexity, untested platform
+   behavior, failure cases and rollback. Define concrete acceptance evidence and
+   a stop condition before the first write. Prefer a narrow experiment/branch when
+   verification is unavailable.
+3. **Implementation and final diff pass:** change only the authorized scope; inspect
+   the final diff, interfaces and affected paths against both passes. Run the
+   relevant lint/tests/build/runtime/visual checks. A successful check is evidence
+   only for the revision and environment actually tested. If essential verification
+   is unavailable, mark the work **UNVERIFIED**, keep it isolated and do not merge,
+   publish or claim completion.
+
+Scale this protocol to risk: a trivial spelling correction needs a quick sanity
+check, not a review ceremony. Repeated thinking alone is not independent proof;
+use another evidence source, a focused test or a fresh failure-mode check. Never
+rewrite good working code merely to satisfy the protocol.
+
 ## Operating model
 
 1. Repository/project rules define product-specific truth and protected boundaries.
@@ -10,6 +37,10 @@ Albert DevCore is the shared development-control plane for current and future Al
 4. Albert Skill Router selects the smallest useful specialist skill set for the task.
 5. Critical engineering review challenges weak assumptions before they harden into implementation choices.
 6. Deterministic evidence and repository-native checks outrank narrative confidence from any model or skill.
+
+## Specialized small-game profile
+
+For owned game prototypes, consult `docs/GAME_DEVELOPMENT_LITE.md` only when game-specific design, implementation, QA or release work makes it relevant. It is a compact set of review perspectives, **not** another agent hierarchy or permission to install third-party game tooling. Preserve project-specific gameplay, stage, and engine evidence.
 
 ## Critical engineering policy
 

@@ -1,5 +1,16 @@
 # Project agent rules
 
+## Rule #1: preflight before nontrivial changes
+Before implementation, perform **two distinct passes**: (1) verify goal, real
+checkout/branch, project rules, current behavior and smallest safe approach;
+(2) independently challenge regressions, hidden assumptions, costs, scope,
+security/privacy and rollback. Identify acceptance checks and stop conditions.
+After implementation inspect the complete diff and run relevant deterministic,
+runtime and visual tests. If essential evidence is unavailable, isolate the
+change and mark it UNVERIFIED; do not merge or report it as finished. Keep
+read-only reviews read-only. Scale the effort to risk: trivial changes need a
+quick sanity check, not redundant paperwork.
+
 ## Goal completion
 Continue through all low-risk and reversible steps needed to complete the stated goal. Do not stop merely because one phase or sub-step finished.
 
@@ -52,6 +63,9 @@ Execution routing is `MANUAL_ONLY` until the user explicitly enables AUTO mode.
 - A temporary linked worktree shares the project's identity; do not register it as another main project. Status and review requests do not trigger bootstrap writes.
 - Confirm actual files, skill hashes and registration before claiming adoption. Missing runtime/access is a concrete pending step, not evidence of automatic installation.
 - Skills remain selective. Project creation does not enable external models, background synchronization, schedules or publication.
+
+## Game prototypes
+For substantive game development, follow the project's existing gameplay and test rules, then use the reviewed DevCore Game Development Lite guidance **if available**. Do not introduce a parallel studio, generic gameplay framework, extra agents or production features before the playable core is validated.
 
 ## Albert Dev Skills
 - Before medium, complex, unfamiliar, risky, design, architecture, debugging, database, release, review, or skill-discovery work, apply the `albert-skill-router` policy when available.
