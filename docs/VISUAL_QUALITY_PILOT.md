@@ -30,13 +30,14 @@ Before any installation or `npx` execution: audit the exact package version,
 scripts, dependencies, rights and permitted network/credential exposure.
 
 First pilot: **one** web/React UI change with an already usable test environment,
-preferably a SEMARQ Studio screen with confirmed baseline or the existing web Playwright
-checks in `masha-albert-health`. Run the project's existing gate **first**.
+existing screenshot/browser checks and a confirmed visual baseline. Keep the
+project identity, unpublished screenshots and results in its private repository.
+Run the project's existing gate **first**.
 Then, in an isolated reviewed environment, compare detector findings with actual
 reviewer-observed defects. Do not introduce a new mandatory CI dependency until
 the detector catches real issues with an acceptable false-positive rate.
 
-For **RIFTGRID**, use Godot's own renderer screenshots, viewport geometry smoke,
+For **Godot games**, use native renderer screenshots, viewport geometry smoke,
 interaction smoke and actual Android testing instead. Do not claim Impeccable can inspect
 Godot screenshots automatically without a verified supported integration.
 
