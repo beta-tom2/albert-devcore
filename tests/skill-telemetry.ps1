@@ -45,7 +45,7 @@ try {
     Assert-True ($null -eq $rows[1].rework_count) 'Unmeasured rework must not become a fake zero.'
     Assert-True ($rows[1].first_pass -eq 'unknown') 'Unmeasured first pass must remain unknown.'
 
-    $summary = (& $Tool -Action summary -ProjectPath $Fixture | Out-String)
+    $summary = (& $Tool -Action summary -ProjectPath $Fixture | Out-String -Width 350)
     Assert-True ($summary -match 'firstPassMeasured') 'Summary must expose the new measured denominator.'
     Assert-True ($summary -match 'albert-design-director') 'Summary must include the recorded skill.'
 
