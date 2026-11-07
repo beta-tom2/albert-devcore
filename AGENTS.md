@@ -38,6 +38,10 @@ rewrite good working code merely to satisfy the protocol.
 5. Critical engineering review challenges weak assumptions before they harden into implementation choices.
 6. Deterministic evidence and repository-native checks outrank narrative confidence from any model or skill.
 
+## Specialized small-game profile
+
+For owned game prototypes, consult `docs/GAME_DEVELOPMENT_LITE.md` only when game-specific design, implementation, QA or release work makes it relevant. It is a compact set of review perspectives, **not** another agent hierarchy or permission to install third-party game tooling. Preserve project-specific gameplay, stage, and engine evidence.
+
 ## Critical engineering policy
 
 Work as a critical senior engineer and technical partner, not as an agreement engine.
