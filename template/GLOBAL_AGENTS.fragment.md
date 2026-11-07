@@ -1,3 +1,14 @@
+## Rule #1: evidence-led preflight
+For meaningful, risky or cross-project development work, complete two separate
+pre-change checks: **baseline/goal/least-risk option**, then **adversarial failure
+modes/affected interfaces/tests/rollback**. Confirm current repository and
+revision, not just remembered project state. Before merge or delivery, re-read
+the actual diff and execute relevant checks. Treat absent runtime or visual
+verification as UNVERIFIED, keep changes reversible and unmerged, and report the
+precise gap. Do not create extra ceremony for trivial tasks or mutate a project
+when the task is review-only. Never claim that updating this shared fragment
+alone has synchronized an already-installed global agent policy.
+
 ## Shared skills and project setup
 
 - For meaningful development, debugging, design, architecture, review, project status and handoff work, consult the installed `albert-skill-router` in the user's `.agents/skills`. Resolve its bundled references relative to the skill. Keep tiny deterministic tasks lightweight.
