@@ -138,6 +138,14 @@ foreach ($row in $rows) {
     }
 }
 
-$stats.Values |
-    Sort-Object @{Expression='net';Descending=$true}, @{Expression='uses';Descending=$true} |
-    Format-Table skill,uses,completed,failed,benefit,cost,net,firstPassYes,firstPassMeasured,reworkTotal,reworkMeasured,verified,elapsedTotal,elapsedMeasured -AutoSize
+# Convert dictionary rows to real objects so PowerShell's formatter reliably
+# displays each skill name rather than treating it as an opaque collection.
+$report = @()
+foreach ($stat in $stats.Values) {
+    $report += [PSCustomObject]$stat
+}
+$orderedReport = @($report | Sort-Object @{Expression='net';Descending=$true}, @{Expression='uses';Descending=$true})
+
+# Keep the original readable summary and show optional quality metrics separately.
+$orderedReport | Format-Table skill,uses,completed,failed,benefit,cost,net -AutoSize
+$orderedReport | Format-Table skill,firstPassYes,firstPassMeasured,reworkTotal,reworkMeasured,verified,elapsedTotal,elapsedMeasured -AutoSize
