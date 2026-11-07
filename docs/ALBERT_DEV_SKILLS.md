@@ -74,6 +74,30 @@ Use only under `albert-architecture-review` for broad architecture work when nee
 
 `ai-video-generation` from `skills-101/superpowers` remains intentionally unapproved.
 
+## Evidence-backed local telemetry (opt-in fields)
+
+The existing `scripts/skill-telemetry.ps1` JSONL ledger accepts optional
+`-FirstPass yes|no|unknown`, `-ReworkCount <n>`, `-ElapsedMinutes <n>`,
+`-Verification not-run|passed|failed|blocked` and `-Evidence '<command/result/revision>'`.
+A claimed first-pass success requires passed verification, and passed verification
+requires concrete evidence. Omitted durations/rework counts remain **unknown**,
+not zero. Existing callers without these flags continue to work. Results remain
+local under `.ai/analytics/` and are not committed or sent to other models.
+
+Example for a **completed, independently checked** task (substitute real results):
+
+```powershell
+.\scripts\skill-telemetry.ps1 -Action record -ProjectPath 'C:\path\to\repo' `
+  -Task 'Fix responsive panel' -Skills @('impeccable') -Outcome completed `
+  -FirstPass yes -ReworkCount 0 -ElapsedMinutes 25 -Verification passed `
+  -Evidence 'typecheck + Playwright passed on <verified SHA>'
+```
+
+`-Action summary` aggregates recorded **events** by skill, not deduplicated
+completed projects, and the optional counters count only measured events.
+Avoid ranking skills on a handful of observations or confusing correlation
+with proof that a particular skill caused the result.
+
 ## Priority profile and candidate directions
 
 The registry's `prioritySkills` list records these fifteen priorities without activating all of them for every task:
