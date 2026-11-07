@@ -93,6 +93,10 @@ jobs:
         shell: powershell
         run: .\tests\devcore-skills.ps1
 
+      - name: Verify evidence-backed skill telemetry and legacy calls
+        shell: powershell
+        run: .\tests\skill-telemetry.ps1
+
       - name: Verify owned-skill update, conflict checks and restore
         shell: powershell
         run: .\tests\devcore-skills-update.ps1
