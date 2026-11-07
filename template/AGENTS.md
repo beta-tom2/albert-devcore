@@ -64,6 +64,9 @@ Execution routing is `MANUAL_ONLY` until the user explicitly enables AUTO mode.
 - Confirm actual files, skill hashes and registration before claiming adoption. Missing runtime/access is a concrete pending step, not evidence of automatic installation.
 - Skills remain selective. Project creation does not enable external models, background synchronization, schedules or publication.
 
+## Game prototypes
+For substantive game development, follow the project's existing gameplay and test rules, then use the reviewed DevCore Game Development Lite guidance **if available**. Do not introduce a parallel studio, generic gameplay framework, extra agents or production features before the playable core is validated.
+
 ## Albert Dev Skills
 - Before medium, complex, unfamiliar, risky, design, architecture, debugging, database, release, review, or skill-discovery work, apply the `albert-skill-router` policy when available.
 - For meaningful application or website UI/UX/frontend/motion work, let `albert-skill-router` delegate to `albert-design-director`; do not manually stack all design skills.
